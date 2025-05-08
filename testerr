@@ -42,3 +42,85 @@ Tests:       10 passed, 10 total
 Snapshots:   0 total
 Time:        0.298 s, estimated 1 s
 Ran all test suites.
+PASS src/utils/sanToSquare.test.ts
+FAIL src/utils/TrainingOrchestrator.test.ts
+  ● TrainingOrchestrator › loadPgn › should parse and store a simple PGN string
+
+    expect(jest.fn()).toHaveBeenCalledWith(...expected)
+
+    Expected: "1. e4 e5"
+
+    Number of calls: 0
+
+      33 |       orchestrator.loadPgn(pgnString);
+      34 |
+    > 35 |       expect(mockParse).toHaveBeenCalledWith(pgnString);
+         |                         ^
+      36 |       // We'll add a getter for parsedPgn in the next step to verify storage
+      37 |       // For now, just ensuring the parser was called is a good first step.
+      38 |       // expect(orchestrator.getParsedPgn()).toEqual(mockParsedPgn); // This will be the next test
+
+      at Object.<anonymous> (src/utils/TrainingOrchestrator.test.ts:35:25)
+
+Test Suites: 1 failed, 1 passed, 2 total
+Tests:       1 failed, 10 passed, 11 total
+Snapshots:   0 total
+Time:        0.344 s, estimated 1 s
+Ran all test suites.
+PASS src/utils/sanToSquare.test.ts
+FAIL src/utils/TrainingOrchestrator.test.ts
+  ● TrainingOrchestrator › loadPgn › should parse and store a simple PGN string
+
+    expect(jest.fn()).toHaveBeenCalledWith(...expected)
+
+    Expected: "1. e4 e5"
+
+    Number of calls: 0
+
+      39 |       orchestrator.loadPgn(pgnString);
+      40 |
+    > 41 |       expect(mockParse).toHaveBeenCalledWith(pgnString);
+         |                         ^
+      42 |       // We'll add a getter for parsedPgn in the next step to verify storage
+      43 |       // For now, just ensuring the parser was called is a good first step.
+      44 |       // expect(orchestrator.getParsedPgn()).toEqual(mockParsedPgn); // This will be the next test
+
+      at Object.<anonymous> (src/utils/TrainingOrchestrator.test.ts:41:25)
+
+Test Suites: 1 failed, 1 passed, 2 total
+Tests:       1 failed, 10 passed, 11 total
+Snapshots:   0 total
+Time:        0.352 s, estimated 1 s
+Ran all test suites.
+PASS src/utils/sanToSquare.test.ts
+PASS src/utils/TrainingOrchestrator.test.ts
+
+Test Suites: 2 passed, 2 total
+Tests:       11 passed, 11 total
+Snapshots:   0 total
+Time:        0.33 s, estimated 1 s
+Ran all test suites.
+PASS src/utils/sanToSquare.test.ts
+PASS src/utils/TrainingOrchestrator.test.ts
+
+Test Suites: 2 passed, 2 total
+Tests:       13 passed, 13 total
+Snapshots:   0 total
+Time:        0.344 s, estimated 1 s
+Ran all test suites.
+PASS src/utils/sanToSquare.test.ts
+PASS src/utils/TrainingOrchestrator.test.ts
+
+Test Suites: 2 passed, 2 total
+Tests:       13 passed, 13 total
+Snapshots:   0 total
+Time:        0.336 s, estimated 1 s
+Ran all test suites.
+PASS src/utils/sanToSquare.test.ts
+PASS src/utils/TrainingOrchestrator.test.ts
+
+Test Suites: 2 passed, 2 total
+Tests:       13 passed, 13 total
+Snapshots:   0 total
+Time:        0.303 s, estimated 1 s
+Ran all test suites.
