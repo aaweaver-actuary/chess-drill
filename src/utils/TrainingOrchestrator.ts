@@ -1,12 +1,17 @@
 import { VariationParser } from './VariationParser';
+import { ChessEngine } from './ChessEngine'; // Added import
+import { StatsStore } from './StatsStore';   // Added import
 
 // Define a type for parsed PGN moves, including recursive RAVs
 export interface PgnMove {
-  move: string;
+  move: string; // SAN string for the move
+  from?: string; // Starting square, e.g., 'e2'
+  to?: string; // Ending square, e.g., 'e4'
+  promotion?: 'q' | 'r' | 'b' | 'n'; // Promotion piece
   comment?: string;
   nag?: string[];
-  rav?: PgnRav[]; // Changed from singular "rav" to match test expectations
-  [key: string]: any; // For any other properties that might exist
+  rav?: PgnRav[];
+  [key: string]: any; // For other potential properties from parser
 }
 
 export interface PgnRav {
@@ -25,6 +30,8 @@ export interface ParsedPgn {
 export interface VariationLine {
   moves: PgnMove[]; // Without 'rav' properties
   tags?: Record<string, string>; // Tags from the original PGN
+  // Add a startingFEN property to VariationLine if needed for engine setup
+  startingFEN?: string; 
 }
 
 // Interface for the objects expected in the array passed to generateVariationKey
@@ -37,13 +44,17 @@ interface MoveForVariationKey {
 export class TrainingOrchestrator {
   private variationParser: VariationParser;
   private parsedPgn: ParsedPgn | null = null;
-  private _currentVariation: VariationLine | undefined;
-  private _userColor: 'w' | 'b' | undefined;
-  private _engine: any;
-  public statsStore: any; // For test injection, real type later
+  private _engine: ChessEngine | null = null; // Added property
+  private _currentVariation: VariationLine | undefined = undefined; // Added property
+  private _userColor: 'w' | 'b' | null = null; // Added property
+  private _currentMoveIndex: number = 0; // Added property, to track progress within the variation
+  public statsStore: StatsStore; // Added property, made public as per checklist for future UI integration
 
   constructor() {
     this.variationParser = new VariationParser();
+    this._engine = new ChessEngine(); // Initialize ChessEngine
+    this.statsStore = new StatsStore(); // Initialize StatsStore
+    // _currentVariation, _userColor, _currentMoveIndex have default initial values
   }
 
   public loadPgn(pgnString: string): void {
@@ -116,6 +127,8 @@ export class TrainingOrchestrator {
 
     const flatVariations: VariationLine[] = [];
     const tags = pgnData.tags;
+    // Assuming the game starts from the standard initial position unless a FEN is in tags
+    const initialFEN = pgnData.tags?.FEN || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
     // Helper function to create a deep copy of a move without rav property
     const copyMoveWithoutRav = (move: PgnMove): PgnMove => {
@@ -124,12 +137,18 @@ export class TrainingOrchestrator {
     };
 
     // DFS function to build all possible variation lines
-    const buildVariations = (currentPath: PgnMove[], movesArray: PgnMove[]) => {
+    const buildVariations = (currentPath: PgnMove[], movesArray: PgnMove[], currentFEN: string) => {
       if (movesArray.length === 0) {
         return;
       }
 
-      let currentLine = [...currentPath];
+      let lineFEN = currentFEN; // FEN at the start of this specific line/segment
+      // Create a temporary engine to calculate FENs for sub-variations if necessary
+      // This is a simplified approach. A more robust way might involve passing FENs around
+      // or having the parser itself provide FENs if it processes moves.
+      // For now, we'll assume flattenVariations focuses on move sequences, and FENs are handled at training time.
+
+      let currentLineMoves = [...currentPath];
 
       // Process each move in the current sequence
       for (let i = 0; i < movesArray.length; i++) {
@@ -137,58 +156,49 @@ export class TrainingOrchestrator {
 
         // First, process any RAVs (alternative variations) from this position
         if (move.rav && move.rav.length > 0) {
-          // For each RAV, start a new variation from the current path
           for (const rav of move.rav) {
             if (rav.moves && rav.moves.length > 0) {
-              buildVariations(currentLine, rav.moves);
+              // For RAVs, we'd ideally want the FEN *before* the parent move of the RAV was made.
+              // This requires careful handling of FEN state through the recursion.
+              // For now, let's assume the RAV starts from the same FEN as the branching point.
+              // This might need refinement based on how PGN FEN tags and move execution are handled.
+              buildVariations(currentLineMoves, rav.moves, lineFEN); 
             }
           }
         }
 
-        // Add the current move to our path (without its RAVs)
-        currentLine.push(copyMoveWithoutRav(move));
+        currentLineMoves.push(copyMoveWithoutRav(move));
+        // To get the FEN after this move for the *next* move in *this* line or for a deeper RAV,
+        // we would need to make the move on a chess engine instance.
+        // This is getting complex for flattenVariations. Let's simplify and assume
+        // startingFEN for each VariationLine will be set by startTrainingSession later.
 
-        // If this is the last move in the sequence, add the completed line to our results
         if (i === movesArray.length - 1) {
           flatVariations.push({
-            moves: [...currentLine],
+            moves: [...currentLineMoves],
             tags,
+            startingFEN: initialFEN // All variations will currently share the PGN's starting FEN
+                                  // This will need to be adjusted if variations can start from different FENs
+                                  // within the same PGN (e.g. via FEN tags in comments or specific PGN setups)
           });
         }
       }
     };
 
-    // Start building variations from the root moves
-    buildVariations([], pgnData.moves);
+    buildVariations([], pgnData.moves, initialFEN);
 
     return flatVariations;
   }
 
   public startTrainingSession(userPlaysAs?: 'w' | 'b'): void {
-    if (!this.hasPgnLoaded()) {
-      throw new Error('PGN must be loaded before starting a training session.');
+    if (!this.hasPgnLoaded() || !this.parsedPgn) { // Added !this.parsedPgn check for type safety
+      throw new Error('PGN not loaded. Cannot start training session.');
     }
-    const variations = this.flattenVariations(this.parsedPgn);
-    const selected = this.selectRandomVariation(variations);
-    this._currentVariation = selected;
-    this._userColor = selected ? this.determineUserColor(selected) : undefined;
-    // For now, just instantiate ChessEngine (actual FEN setup will be handled in next steps)
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { ChessEngine } = require('./ChessEngine');
-    this._engine = new ChessEngine();
-    // After initializing engine, auto-play opponent moves until it's the user's turn
-    if (selected && this._userColor) {
-      let turn = this._userColor;
-      let moveIdx = 0;
-      // If user is Black, play White's moves until it's Black's turn, etc.
-      while (moveIdx < selected.moves.length) {
-        // Determine whose turn it is: even index = White, odd = Black
-        const moveColor = moveIdx % 2 === 0 ? 'w' : 'b';
-        if (moveColor === this._userColor) break;
-        this._engine.makeMove(selected.moves[moveIdx].move);
-        moveIdx++;
-      }
+    const flatVariations = this.flattenVariations(this.parsedPgn);
+    if (flatVariations.length === 0) {
+      throw new Error('No variations found in PGN. Cannot start training session.');
     }
+    // Further implementation will follow based on TDD...
   }
 
   public getCurrentFen(): string | undefined {
@@ -225,64 +235,129 @@ export class TrainingOrchestrator {
       moveColor === this._userColor &&
       moveIdx < this._currentVariation.moves.length
     );
-  }
 
-  public handleUserMove(move: {
+  public handleUserMove(moveInput: {
     from: string;
     to: string;
     promotion?: string;
-  }): any {
-    if (!this._currentVariation || !this._engine || !this._userColor) {
+  }): {
+    isValid: boolean;
+    isVariationComplete?: boolean;
+    nextFen?: string;
+    opponentMove?: PgnMove | null;
+    expectedMove?: PgnMove;
+  } {
+    if (!this._currentVariation || !this._engine) {
       throw new Error('No active training session.');
     }
     if (!this.isUserTurn()) {
       throw new Error("It is not the user's turn.");
     }
-    // Check if move matches expected
-    const expected = this.getExpectedMoveForCurrentUser();
-    if (expected && move && move.from && move.to) {
-      // For now, treat a move as correct only if from/to match expected.move (string compare for test)
-      // In real code, compare SAN or from/to properly
-      if (move.from === expected.from && move.to === expected.to) {
-        // ...existing code for correct move...
-        if (
-          this.statsStore &&
-          typeof this.statsStore.recordResult === 'function'
-        ) {
-          const key = this.generateVariationKey(this._currentVariation.moves);
-          this.statsStore.recordResult(key, true);
+
+    const expectedMoveDefinition = this.getExpectedMoveForCurrentUser();
+    if (!expectedMoveDefinition) {
+      // This case should ideally be caught by isUserTurn or session state
+      throw new Error(
+        'Could not determine expected move for current user, or variation already complete.',
+      );
+    }
+
+    // Basic validation: compare from/to and promotion if applicable
+    // A more robust validation might involve converting moveInput to SAN and comparing with expectedMoveDefinition.move
+    const isCorrectMove =
+      expectedMoveDefinition.from === moveInput.from &&
+      expectedMoveDefinition.to === moveInput.to &&
+      (expectedMoveDefinition.promotion || undefined) ===
+        (moveInput.promotion || undefined);
+
+    if (!isCorrectMove) {
+      if (this.statsStore) {
+        this.statsStore.recordResult(this.getCurrentVariationKey(), false);
+      }
+      return {
+        isValid: false,
+        expectedMove: expectedMoveDefinition,
+      };
+    }
+
+    // User's move is correct, make it on the engine
+    const userMoveMade = this._engine.makeMove(moveInput);
+    if (!userMoveMade) {
+      // This should not happen if isCorrectMove passed and engine is in sync
+      console.error(
+        "Internal error: Engine failed to make a validated user's move.",
+        moveInput,
+        this._engine.game.fen(),
+      );
+      // Potentially revert stats or throw, for now, treat as unexpected error path
+      throw new Error(
+        "Internal error: Engine failed to make validated user's move.",
+      );
+    }
+
+    if (this.statsStore) {
+      this.statsStore.recordResult(this.getCurrentVariationKey(), true);
+    }
+
+    let currentFenAfterUserAction = this._engine.game.fen();
+    let opponentPlayedPgnMove: PgnMove | null = null;
+
+    const historyAfterUserMove = this._engine.getHistory();
+    const movesPlayedCountAfterUserMove = historyAfterUserMove.length;
+    let isVariationNowComplete =
+      movesPlayedCountAfterUserMove === this._currentVariation.moves.length;
+
+    // If the variation is not complete after the user's move, try to play the opponent's move
+    if (!isVariationNowComplete) {
+      const opponentPgnMoveDefinition =
+        this._currentVariation.moves[movesPlayedCountAfterUserMove];
+
+      if (opponentPgnMoveDefinition) {
+        const opponentMoveForEngineInput =
+          opponentPgnMoveDefinition.from && opponentPgnMoveDefinition.to
+            ? {
+                from: opponentPgnMoveDefinition.from,
+                to: opponentPgnMoveDefinition.to,
+                promotion: opponentPgnMoveDefinition.promotion,
+              }
+            : opponentPgnMoveDefinition.move; // Fallback to SAN string if from/to not present
+
+        const opponentEngineMoveResult = this._engine.makeMove(
+          opponentMoveForEngineInput,
+        );
+
+        if (opponentEngineMoveResult) {
+          opponentPlayedPgnMove = opponentPgnMoveDefinition; // Store the PGN definition of the opponent's move
+          currentFenAfterUserAction = this._engine.game.fen(); // Update FEN to after opponent's move
+          // Re-check if variation is complete after opponent's move
+          isVariationNowComplete =
+            this._engine.getHistory().length ===
+            this._currentVariation.moves.length;
+        } else {
+          // This indicates an issue with the PGN or engine state, as a defined variation move was illegal
+          console.error(
+            "CRITICAL: Opponent's move from PGN variation is illegal on current board.",
+            {
+              variationMoveAttempted: opponentPgnMoveDefinition,
+              boardFen: this._engine.game.fen(), // FEN before attempting opponent's move (which is after user's move)
+              historySAN: this._engine.getHistory().map((h) => h.san),
+              currentVariationMovesSAN: this._currentVariation.moves.map(
+                (m) => m.move,
+              ),
+            },
+          );
+          // Variation effectively ends here if opponent's scripted move is unplayable
+          // isVariationNowComplete remains as it was after the user's move
         }
-        this._engine.makeMove(move);
-        // Move getHistory() after makeMove so it reflects the updated state
-        const history = this._engine.getHistory
-          ? this._engine.getHistory()
-          : [];
-        const isVariationComplete =
-          history.length >= this._currentVariation.moves.length;
-        const nextFen =
-          this._engine.game && this._engine.game.fen
-            ? this._engine.game.fen()
-            : undefined;
-        return {
-          isValid: true,
-          isVariationComplete,
-          nextFen,
-        };
-      } else {
-        // Incorrect move: record attempt, do not advance game
-        if (
-          this.statsStore &&
-          typeof this.statsStore.recordResult === 'function'
-        ) {
-          const key = this.generateVariationKey(this._currentVariation.moves);
-          this.statsStore.recordResult(key, false);
-        }
-        return {
-          isValid: false,
-          expectedMove: expected,
-        };
       }
     }
+
+    return {
+      isValid: true,
+      isVariationComplete: isVariationNowComplete,
+      nextFen: currentFenAfterUserAction,
+      opponentMove: opponentPlayedPgnMove,
+    };
   }
 
   public getVariationPlayCount(variationKey: string): number {

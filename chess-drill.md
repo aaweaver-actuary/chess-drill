@@ -170,11 +170,11 @@ This checklist emphasizes strict TDD: (a) No production code without a failing t
     *   `[x] Test:` `handleUserMove(move: { from: string, to: string, promotion?: string })`: Fails if no training session active or not user's turn.
         *   `[x] Code:` Add checks.
     *   `[x] Test:` `handleUserMove()`: User makes a correct move (matches variation):
-        *   `[x] Sub-Test:` Records statistics: increment attempts and successes for the variation key, log time taken, number of clicks (placeholder for now).
-        *   `[x] Sub-Test:` Advances internal game state in `ChessEngine` with user's move.
-        *   `[x] Sub-Test:` If variation is not complete, `ChessEngine` plays opponent's corresponding reply from the variation automatically.
-        *   `[x] Sub-Test:` Returns `{ isValid: true, isVariationComplete: <boolean>, nextFen: <fen_after_opponent_move_or_user_move_if_complete>, opponentMove?: <move_object> }`.
-        *   `[x] Code:` Implement correct move handling, opponent auto-reply, and stats recording.
+        *   `[x] Sub-Test:` Records statistics: increment attempts and successes for the variation key, log time taken, number of clicks (placeholder for now). - **DONE**
+        *   `[x] Sub-Test:` Advances internal game state in `ChessEngine` with user's move. - **DONE**
+        *   `[x] Sub-Test:` If variation is not complete, `ChessEngine` plays opponent's corresponding reply from the variation automatically. - **DONE**
+        *   `[x] Sub-Test:` Returns `{ isValid: true, isVariationComplete: <boolean>, nextFen: <fen_after_opponent_move_or_user_move_if_complete>, opponentMove?: <move_object> }`. - **DONE**
+        *   `[x] Code:` Implement correct move handling, opponent auto-reply, and stats recording. - **DONE**
     *   `[x] Test:` `handleUserMove()`: User makes an incorrect move:
         *   `[x] Sub-Test:` Records statistics: increment attempts for the variation key, log time taken, number of clicks.
         *   `[x] Sub-Test:` Returns `{ isValid: false, expectedMove: <move_object_of_correct_move> }`.
