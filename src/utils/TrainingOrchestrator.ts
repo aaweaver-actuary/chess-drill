@@ -38,6 +38,8 @@ export class TrainingOrchestrator {
   private variationParser: VariationParser;
   private parsedPgn: ParsedPgn | null = null;
   private _currentVariation: VariationLine | undefined;
+  private _userColor: 'w' | 'b' | undefined;
+  private _engine: any;
 
   constructor() {
     this.variationParser = new VariationParser();
@@ -165,6 +167,58 @@ export class TrainingOrchestrator {
     if (!this.hasPgnLoaded()) {
       throw new Error('PGN must be loaded before starting a training session.');
     }
-    // Further logic will be implemented in the next steps
+    const variations = this.flattenVariations(this.parsedPgn);
+    const selected = this.selectRandomVariation(variations);
+    this._currentVariation = selected;
+    this._userColor = selected ? this.determineUserColor(selected) : undefined;
+    // For now, just instantiate ChessEngine (actual FEN setup will be handled in next steps)
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { ChessEngine } = require('./ChessEngine');
+    this._engine = new ChessEngine();
+    // After initializing engine, auto-play opponent moves until it's the user's turn
+    if (selected && this._userColor) {
+      let turn = this._userColor;
+      let moveIdx = 0;
+      // If user is Black, play White's moves until it's Black's turn, etc.
+      while (moveIdx < selected.moves.length) {
+        // Determine whose turn it is: even index = White, odd = Black
+        const moveColor = moveIdx % 2 === 0 ? 'w' : 'b';
+        if (moveColor === this._userColor) break;
+        this._engine.makeMove(selected.moves[moveIdx].move);
+        moveIdx++;
+      }
+    }
+  }
+
+  public getCurrentFen(): string | undefined {
+    if (
+      !this._engine ||
+      !this._engine.game ||
+      typeof this._engine.game.fen !== 'function'
+    )
+      return undefined;
+    return this._engine.game.fen();
+  }
+
+  public getExpectedMoveForCurrentUser(): PgnMove | undefined {
+    if (!this._currentVariation || !this._engine || !this._userColor)
+      return undefined;
+    const history = this._engine.getHistory ? this._engine.getHistory() : [];
+    // Determine whose turn it is: even index = White, odd = Black
+    for (let i = history.length; i < this._currentVariation.moves.length; i++) {
+      const moveColor = i % 2 === 0 ? 'w' : 'b';
+      if (moveColor === this._userColor) {
+        return this._currentVariation.moves[i];
+      }
+    }
+    return undefined;
+  }
+
+  public isUserTurn(): boolean {
+    if (!this._currentVariation || !this._engine || !this._userColor) return false;
+    const history = this._engine.getHistory ? this._engine.getHistory() : [];
+    const moveIdx = history.length;
+    const moveColor = moveIdx % 2 === 0 ? 'w' : 'b';
+    return moveColor === this._userColor && moveIdx < this._currentVariation.moves.length;
   }
 }

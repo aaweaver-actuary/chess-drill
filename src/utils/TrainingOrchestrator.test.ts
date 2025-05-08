@@ -563,7 +563,201 @@ describe('TrainingOrchestrator', () => {
     });
 
     test('should throw an error if PGN is not loaded', () => {
-      expect(() => orchestrator.startTrainingSession()).toThrow('PGN must be loaded before starting a training session.');
+      expect(() => orchestrator.startTrainingSession()).toThrow(
+        'PGN must be loaded before starting a training session.',
+      );
+    });
+  });
+
+  describe('startTrainingSession (core logic)', () => {
+    let orchestrator: TrainingOrchestrator;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+    });
+
+    test('should select a random variation, determine user color, and initialize ChessEngine', () => {
+      // Mock parsed PGN and flattenVariations
+      const mockParsedPgn = { moves: [{ move: 'e4' }, { move: 'e5' }] };
+      // @ts-ignore
+      orchestrator.parsedPgn = mockParsedPgn;
+      const variations = [
+        { moves: [{ move: 'e4' }, { move: 'e5' }], tags: { White: 'User' } },
+        { moves: [{ move: 'd4' }, { move: 'd5' }], tags: { White: 'User' } },
+      ];
+      jest.spyOn(orchestrator, 'flattenVariations').mockReturnValue(variations);
+      jest
+        .spyOn(orchestrator, 'selectRandomVariation')
+        .mockReturnValue(variations[1]);
+      jest.spyOn(orchestrator, 'determineUserColor').mockReturnValue('w');
+
+      orchestrator.startTrainingSession();
+
+      // @ts-ignore
+      expect(orchestrator._currentVariation).toBe(variations[1]);
+      // @ts-ignore
+      expect(orchestrator._userColor).toBe('w');
+      // @ts-ignore
+      expect(orchestrator._engine).toBeDefined();
+    });
+  });
+
+  describe('startTrainingSession (auto-advance to user turn)', () => {
+    let orchestrator: TrainingOrchestrator;
+    let ChessEngineMock: any;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+      // Mock ChessEngine
+      ChessEngineMock = jest.fn().mockImplementation(() => {
+        return {
+          reset: jest.fn(),
+          makeMove: jest.fn(),
+          game: {
+            turn: jest.fn(),
+            fen: jest.fn().mockReturnValue('mocked-fen'),
+          },
+        };
+      });
+      jest.resetModules();
+      jest.doMock('./ChessEngine', () => ({ ChessEngine: ChessEngineMock }));
+    });
+
+    afterEach(() => {
+      jest.dontMock('./ChessEngine');
+    });
+
+    test("should auto-play opponent moves until it is the user's turn", () => {
+      // User is Black, variation starts with White's move
+      const mockParsedPgn = {
+        moves: [{ move: 'e4' }, { move: 'e5' }, { move: 'Nf3' }],
+      };
+      // @ts-ignore
+      orchestrator.parsedPgn = mockParsedPgn;
+      const variation = {
+        moves: [{ move: 'e4' }, { move: 'e5' }, { move: 'Nf3' }],
+      };
+      jest
+        .spyOn(orchestrator, 'flattenVariations')
+        .mockReturnValue([variation]);
+      jest
+        .spyOn(orchestrator, 'selectRandomVariation')
+        .mockReturnValue(variation);
+      jest.spyOn(orchestrator, 'determineUserColor').mockReturnValue('b');
+
+      orchestrator.startTrainingSession();
+
+      // @ts-ignore
+      const engine = orchestrator._engine;
+      // Should have called makeMove for e4 (White's move), then stopped for Black's turn
+      expect(engine.makeMove).toHaveBeenCalledWith('e4');
+      // Should not have called makeMove for e5 (Black's move)
+      expect(engine.makeMove).not.toHaveBeenCalledWith('e5');
+    });
+  });
+
+  describe('getCurrentFen', () => {
+    let orchestrator: TrainingOrchestrator;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+    });
+
+    test('should return undefined if engine is not initialized', () => {
+      expect(orchestrator.getCurrentFen()).toBeUndefined();
+    });
+
+    test('should return the FEN from the ChessEngine if initialized', () => {
+      // @ts-ignore
+      orchestrator._engine = { game: { fen: () => 'mocked-fen' } };
+      expect(orchestrator.getCurrentFen()).toBe('mocked-fen');
+    });
+  });
+
+  describe('getExpectedMoveForCurrentUser', () => {
+    let orchestrator: TrainingOrchestrator;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+    });
+
+    test('should return undefined if no variation is selected', () => {
+      expect(orchestrator.getExpectedMoveForCurrentUser()).toBeUndefined();
+    });
+
+    test('should return the next move object for the current user', () => {
+      // User is White, first move
+      // @ts-ignore
+      orchestrator._currentVariation = {
+        moves: [{ move: 'e4' }, { move: 'e5' }, { move: 'Nf3' }],
+      };
+      // @ts-ignore
+      orchestrator._userColor = 'w';
+      // @ts-ignore
+      orchestrator._engine = { getHistory: () => [] };
+      const move = orchestrator.getExpectedMoveForCurrentUser();
+      expect(move).toEqual({ move: 'e4' });
+    });
+
+    test('should return the next move object for the current user after some moves', () => {
+      // User is Black, after one move played
+      // @ts-ignore
+      orchestrator._currentVariation = {
+        moves: [{ move: 'e4' }, { move: 'e5' }, { move: 'Nf3' }],
+      };
+      // @ts-ignore
+      orchestrator._userColor = 'b';
+      // @ts-ignore
+      orchestrator._engine = { getHistory: () => [{ san: 'e4' }] };
+      const move = orchestrator.getExpectedMoveForCurrentUser();
+      expect(move).toEqual({ move: 'e5' });
+    });
+
+    test('should return undefined if all moves are played', () => {
+      // @ts-ignore
+      orchestrator._currentVariation = {
+        moves: [{ move: 'e4' }, { move: 'e5' }],
+      };
+      // @ts-ignore
+      orchestrator._userColor = 'w';
+      // @ts-ignore
+      orchestrator._engine = {
+        getHistory: () => [{ san: 'e4' }, { san: 'e5' }],
+      };
+      expect(orchestrator.getExpectedMoveForCurrentUser()).toBeUndefined();
+    });
+  });
+
+  describe('isUserTurn', () => {
+    let orchestrator: TrainingOrchestrator;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+    });
+
+    test('should return false if no variation or engine is set', () => {
+      expect(orchestrator.isUserTurn()).toBe(false);
+    });
+
+    test('should return true if the next move is for the user', () => {
+      // User is White, first move
+      // @ts-ignore
+      orchestrator._currentVariation = {
+        moves: [{ move: 'e4' }, { move: 'e5' }],
+      };
+      // @ts-ignore
+      orchestrator._userColor = 'w';
+      // @ts-ignore
+      orchestrator._engine = { getHistory: () => [] };
+      expect(orchestrator.isUserTurn()).toBe(true);
+    });
+
+    test('should return false if the next move is for the opponent', () => {
+      // User is Black, after one move played
+      // @ts-ignore
+      orchestrator._currentVariation = {
+        moves: [{ move: 'e4' }, { move: 'e5' }],
+      };
+      // @ts-ignore
+      orchestrator._userColor = 'b';
+      // @ts-ignore
+      orchestrator._engine = { getHistory: () => [] };
+      expect(orchestrator.isUserTurn()).toBe(false);
     });
   });
 });
