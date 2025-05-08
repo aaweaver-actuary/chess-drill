@@ -1,6 +1,6 @@
 import { VariationParser } from './VariationParser';
 import { ChessEngine } from './ChessEngine'; // Added import
-import { StatsStore } from './StatsStore';   // Added import
+import { StatsStore } from './StatsStore'; // Added import
 
 // Define a type for parsed PGN moves, including recursive RAVs
 export interface PgnMove {
@@ -23,6 +23,7 @@ export interface ParsedPgn {
   moves: PgnMove[];
   tags?: Record<string, string>;
   result?: string;
+  startingFEN?: string; // Added
   // Other properties that might be present in parsed PGN
 }
 
@@ -30,8 +31,7 @@ export interface ParsedPgn {
 export interface VariationLine {
   moves: PgnMove[]; // Without 'rav' properties
   tags?: Record<string, string>; // Tags from the original PGN
-  // Add a startingFEN property to VariationLine if needed for engine setup
-  startingFEN?: string; 
+  startingFEN?: string; // Added
 }
 
 // Interface for the objects expected in the array passed to generateVariationKey
@@ -45,7 +45,7 @@ export class TrainingOrchestrator {
   private variationParser: VariationParser;
   private parsedPgn: ParsedPgn | null = null;
   private _engine: ChessEngine | null = null; // Added property
-  private _currentVariation: VariationLine | undefined = undefined; // Added property
+  private _currentVariation: VariationLine | null = null; // Added property
   private _userColor: 'w' | 'b' | null = null; // Added property
   private _currentMoveIndex: number = 0; // Added property, to track progress within the variation
   public statsStore: StatsStore; // Added property, made public as per checklist for future UI integration
@@ -96,9 +96,12 @@ export class TrainingOrchestrator {
    */
   public determineUserColor(variation: VariationLine): 'w' | 'b' | undefined {
     if (!variation.moves || variation.moves.length === 0) return undefined;
+    // For MVP: if move starts with '...', user is Black; otherwise, user is White.
     const firstMove = variation.moves[0].move;
-    if (firstMove.startsWith('...')) return 'b';
-    return 'w';
+    if (firstMove.includes('...')) {
+      return 'b'; // User plays Black
+    }
+    return 'w'; // User plays White
   }
 
   /**
@@ -127,8 +130,7 @@ export class TrainingOrchestrator {
 
     const flatVariations: VariationLine[] = [];
     const tags = pgnData.tags;
-    // Assuming the game starts from the standard initial position unless a FEN is in tags
-    const initialFEN = pgnData.tags?.FEN || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    const startingFEN = pgnData.startingFEN; // Capture startingFEN from pgnData
 
     // Helper function to create a deep copy of a move without rav property
     const copyMoveWithoutRav = (move: PgnMove): PgnMove => {
@@ -137,18 +139,12 @@ export class TrainingOrchestrator {
     };
 
     // DFS function to build all possible variation lines
-    const buildVariations = (currentPath: PgnMove[], movesArray: PgnMove[], currentFEN: string) => {
+    const buildVariations = (currentPath: PgnMove[], movesArray: PgnMove[]) => {
       if (movesArray.length === 0) {
         return;
       }
 
-      let lineFEN = currentFEN; // FEN at the start of this specific line/segment
-      // Create a temporary engine to calculate FENs for sub-variations if necessary
-      // This is a simplified approach. A more robust way might involve passing FENs around
-      // or having the parser itself provide FENs if it processes moves.
-      // For now, we'll assume flattenVariations focuses on move sequences, and FENs are handled at training time.
-
-      let currentLineMoves = [...currentPath];
+      let currentLine = [...currentPath];
 
       // Process each move in the current sequence
       for (let i = 0; i < movesArray.length; i++) {
@@ -156,58 +152,53 @@ export class TrainingOrchestrator {
 
         // First, process any RAVs (alternative variations) from this position
         if (move.rav && move.rav.length > 0) {
+          // For each RAV, start a new variation from the current path
           for (const rav of move.rav) {
             if (rav.moves && rav.moves.length > 0) {
-              // For RAVs, we'd ideally want the FEN *before* the parent move of the RAV was made.
-              // This requires careful handling of FEN state through the recursion.
-              // For now, let's assume the RAV starts from the same FEN as the branching point.
-              // This might need refinement based on how PGN FEN tags and move execution are handled.
-              buildVariations(currentLineMoves, rav.moves, lineFEN); 
+              buildVariations(currentLine, rav.moves);
             }
           }
         }
 
-        currentLineMoves.push(copyMoveWithoutRav(move));
-        // To get the FEN after this move for the *next* move in *this* line or for a deeper RAV,
-        // we would need to make the move on a chess engine instance.
-        // This is getting complex for flattenVariations. Let's simplify and assume
-        // startingFEN for each VariationLine will be set by startTrainingSession later.
+        // Add the current move to our path (without its RAVs)
+        currentLine.push(copyMoveWithoutRav(move));
 
+        // If this is the last move in the sequence, add the completed line to our results
         if (i === movesArray.length - 1) {
           flatVariations.push({
-            moves: [...currentLineMoves],
+            moves: [...currentLine],
             tags,
-            startingFEN: initialFEN // All variations will currently share the PGN's starting FEN
-                                  // This will need to be adjusted if variations can start from different FENs
-                                  // within the same PGN (e.g. via FEN tags in comments or specific PGN setups)
+            startingFEN, // Added startingFEN here
           });
         }
       }
     };
 
-    buildVariations([], pgnData.moves, initialFEN);
+    // Start building variations from the root moves
+    buildVariations([], pgnData.moves);
 
     return flatVariations;
   }
 
   public startTrainingSession(userPlaysAs?: 'w' | 'b'): void {
-    if (!this.hasPgnLoaded() || !this.parsedPgn) { // Added !this.parsedPgn check for type safety
+    if (!this.hasPgnLoaded() || !this.parsedPgn) {
+      // Added !this.parsedPgn check for type safety
       throw new Error('PGN not loaded. Cannot start training session.');
     }
     const flatVariations = this.flattenVariations(this.parsedPgn);
     if (flatVariations.length === 0) {
-      throw new Error('No variations found in PGN. Cannot start training session.');
+      throw new Error(
+        'No variations found in PGN. Cannot start training session.',
+      );
     }
     // Further implementation will follow based on TDD...
   }
 
   public getCurrentFen(): string | undefined {
-    if (
-      !this._engine ||
-      !this._engine.game ||
-      typeof this._engine.game.fen !== 'function'
-    )
+    if (!this._engine || !this._engine.game || !this._currentVariation) {
+      // Added check for _currentVariation
       return undefined;
+    }
     return this._engine.game.fen();
   }
 
@@ -235,6 +226,7 @@ export class TrainingOrchestrator {
       moveColor === this._userColor &&
       moveIdx < this._currentVariation.moves.length
     );
+  }
 
   public handleUserMove(moveInput: {
     from: string;
