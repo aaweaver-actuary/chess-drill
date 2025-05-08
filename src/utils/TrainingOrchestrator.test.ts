@@ -469,4 +469,47 @@ describe('TrainingOrchestrator', () => {
       Math.random = originalRandom;
     });
   });
+
+  describe('selectRandomVariation edge cases', () => {
+    let orchestrator: TrainingOrchestrator;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+    });
+
+    test('should return undefined if PGN is not loaded and flattenVariations is called with null', () => {
+      // Simulate not loaded PGN
+      const result = orchestrator.selectRandomVariation(
+        orchestrator.flattenVariations(null),
+      );
+      expect(result).toBeUndefined();
+    });
+
+    test('should return undefined if flattenVariations returns an empty array', () => {
+      // Simulate loaded PGN but no moves
+      const result = orchestrator.selectRandomVariation([]);
+      expect(result).toBeUndefined();
+    });
+  });
+
+  describe('getCurrentVariation', () => {
+    let orchestrator: TrainingOrchestrator;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+    });
+
+    test('should return undefined if no variation has been selected', () => {
+      expect(orchestrator.getCurrentVariation()).toBeUndefined();
+    });
+
+    test('should return the currently selected variation after selection', () => {
+      const variations = [
+        { moves: [{ move: 'e4' }], tags: { White: 'User' } },
+        { moves: [{ move: 'd4' }], tags: { White: 'User' } },
+      ];
+      // Simulate selection
+      // @ts-ignore (simulate private property for test)
+      orchestrator._currentVariation = variations[1];
+      expect(orchestrator.getCurrentVariation()).toBe(variations[1]);
+    });
+  });
 });

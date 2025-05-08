@@ -37,6 +37,7 @@ interface MoveForVariationKey {
 export class TrainingOrchestrator {
   private variationParser: VariationParser;
   private parsedPgn: ParsedPgn | null = null;
+  private _currentVariation: VariationLine | undefined;
 
   constructor() {
     this.variationParser = new VariationParser();
@@ -64,6 +65,10 @@ export class TrainingOrchestrator {
     }
     // Create the key by joining only the 'move' property of each object
     return variationMoves.map((m) => m.move).join('_');
+  }
+
+  public getCurrentVariation(): VariationLine | undefined {
+    return this._currentVariation;
   }
 
   /**
