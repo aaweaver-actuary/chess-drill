@@ -124,10 +124,10 @@ This checklist emphasizes strict TDD: (a) No production code without a failing t
         *   `[x] Code:` Add `loadPgn` method, basic validation.
     *   `[x] Test:` `loadPgn(pgnString)`: Successfully parses a simple PGN string (e.g., "1. e4 e5") and stores parsed data (use a mock `VariationParser`).
         *   `[x] Code:` Integrate `VariationParser` (or mock), store result.
-    *   `[ ] Test:` `loadPgn(pgnString)`: Successfully parses a PGN string with comments and NAGs.
-        *   `[ ] Code:` Ensure `VariationParser` (or mock) handles these.
-    *   `[ ] Test:` `loadPgn(pgnString)`: Successfully parses a PGN string with nested variations.
-        *   `[ ] Code:` Ensure `VariationParser` (or mock) handles these.
+    *   `[x] Test:` `loadPgn(pgnString)`: Successfully parses a PGN string with comments and NAGs.
+        *   `[x] Code:` Ensure `VariationParser` (or mock) handles these.
+    *   `[x] Test:` `loadPgn(pgnString)`: Successfully parses a PGN string with nested variations.
+        *   `[x] Code:` Ensure `VariationParser` (or mock) handles these.
     *   `[x] Test:` `getParsedPgn()`: Returns the parsed PGN data or null if not loaded.
         *   `[x] Code:` Add `getParsedPgn` method.
     *   `[x] Test:` `hasPgnLoaded()`: Returns true if PGN is loaded, false otherwise.
