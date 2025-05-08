@@ -40,6 +40,7 @@ export class TrainingOrchestrator {
   private _currentVariation: VariationLine | undefined;
   private _userColor: 'w' | 'b' | undefined;
   private _engine: any;
+  public statsStore: any; // For test injection, real type later
 
   constructor() {
     this.variationParser = new VariationParser();
@@ -215,10 +216,80 @@ export class TrainingOrchestrator {
   }
 
   public isUserTurn(): boolean {
-    if (!this._currentVariation || !this._engine || !this._userColor) return false;
+    if (!this._currentVariation || !this._engine || !this._userColor)
+      return false;
     const history = this._engine.getHistory ? this._engine.getHistory() : [];
     const moveIdx = history.length;
     const moveColor = moveIdx % 2 === 0 ? 'w' : 'b';
-    return moveColor === this._userColor && moveIdx < this._currentVariation.moves.length;
+    return (
+      moveColor === this._userColor &&
+      moveIdx < this._currentVariation.moves.length
+    );
+  }
+
+  public handleUserMove(move: {
+    from: string;
+    to: string;
+    promotion?: string;
+  }): any {
+    if (!this._currentVariation || !this._engine || !this._userColor) {
+      throw new Error('No active training session.');
+    }
+    if (!this.isUserTurn()) {
+      throw new Error("It is not the user's turn.");
+    }
+    // Check if move matches expected
+    const expected = this.getExpectedMoveForCurrentUser();
+    if (expected && move && move.from && move.to) {
+      // For now, treat a move as correct only if from/to match expected.move (string compare for test)
+      // In real code, compare SAN or from/to properly
+      if (move.from === expected.from && move.to === expected.to) {
+        // ...existing code for correct move...
+        if (
+          this.statsStore &&
+          typeof this.statsStore.recordResult === 'function'
+        ) {
+          const key = this.generateVariationKey(this._currentVariation.moves);
+          this.statsStore.recordResult(key, true);
+        }
+        this._engine.makeMove(move);
+        // Move getHistory() after makeMove so it reflects the updated state
+        const history = this._engine.getHistory
+          ? this._engine.getHistory()
+          : [];
+        const isVariationComplete =
+          history.length >= this._currentVariation.moves.length;
+        const nextFen =
+          this._engine.game && this._engine.game.fen
+            ? this._engine.game.fen()
+            : undefined;
+        return {
+          isValid: true,
+          isVariationComplete,
+          nextFen,
+        };
+      } else {
+        // Incorrect move: record attempt, do not advance game
+        if (
+          this.statsStore &&
+          typeof this.statsStore.recordResult === 'function'
+        ) {
+          const key = this.generateVariationKey(this._currentVariation.moves);
+          this.statsStore.recordResult(key, false);
+        }
+        return {
+          isValid: false,
+          expectedMove: expected,
+        };
+      }
+    }
+  }
+
+  public getVariationPlayCount(variationKey: string): number {
+    if (this.statsStore && typeof this.statsStore.getStats === 'function') {
+      const stats = this.statsStore.getStats(variationKey);
+      return stats ? stats.attempts : 0;
+    }
+    return 0;
   }
 }

@@ -760,4 +760,195 @@ describe('TrainingOrchestrator', () => {
       expect(orchestrator.isUserTurn()).toBe(false);
     });
   });
+
+  describe('handleUserMove', () => {
+    let orchestrator: any;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+    });
+
+    test('should throw if no training session is active', () => {
+      expect(() =>
+        orchestrator.handleUserMove({ from: 'e2', to: 'e4' }),
+      ).toThrow('No active training session.');
+    });
+
+    test("should throw if it is not the user's turn", () => {
+      // @ts-ignore
+      orchestrator._currentVariation = {
+        moves: [{ move: 'e4' }, { move: 'e5' }],
+      };
+      // @ts-ignore
+      orchestrator._userColor = 'w';
+      // @ts-ignore
+      orchestrator._engine = { getHistory: () => [{ san: 'e4' }] }; // Black's turn
+      jest.spyOn(orchestrator, 'isUserTurn').mockReturnValue(false);
+      expect(() =>
+        orchestrator.handleUserMove({ from: 'e2', to: 'e4' }),
+      ).toThrow("It is not the user's turn.");
+    });
+  });
+
+  describe('handleUserMove (correct move)', () => {
+    let orchestrator: any;
+    let StatsStoreMock: any;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+      // Mock stats store
+      StatsStoreMock = { recordResult: jest.fn() };
+      orchestrator.statsStore = StatsStoreMock;
+      // Set up a simple variation and engine
+      orchestrator._currentVariation = {
+        moves: [
+          { move: 'e4' },
+          { move: 'e5' },
+          { move: 'Nf3' },
+          { move: 'Nc6' },
+        ],
+      };
+      orchestrator._userColor = 'w';
+      orchestrator._engine = {
+        getHistory: () => [],
+        makeMove: jest
+          .fn()
+          .mockReturnValue({ from: 'e2', to: 'e4', san: 'e4' }),
+        game: { fen: () => 'fen-after-e4' },
+      };
+      jest
+        .spyOn(orchestrator, 'getExpectedMoveForCurrentUser')
+        .mockReturnValue({ from: 'e2', to: 'e4' });
+      jest.spyOn(orchestrator, 'isUserTurn').mockReturnValue(true);
+    });
+
+    test('should record stats, advance game, and return correct result for correct move', () => {
+      const result = orchestrator.handleUserMove({ from: 'e2', to: 'e4' });
+      expect(StatsStoreMock.recordResult).toHaveBeenCalled();
+      expect(orchestrator._engine.makeMove).toHaveBeenCalledWith({
+        from: 'e2',
+        to: 'e4',
+      });
+      expect(result.isValid).toBe(true);
+      expect(result.isVariationComplete).toBe(false);
+      expect(result.nextFen).toBe('fen-after-e4');
+    });
+  });
+
+  describe('handleUserMove (incorrect move)', () => {
+    let orchestrator: any;
+    let StatsStoreMock: any;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+      // Mock stats store
+      StatsStoreMock = { recordResult: jest.fn() };
+      orchestrator.statsStore = StatsStoreMock;
+      // Set up a simple variation and engine
+      orchestrator._currentVariation = {
+        moves: [
+          { move: 'e4' },
+          { move: 'e5' },
+          { move: 'Nf3' },
+          { move: 'Nc6' },
+        ],
+      };
+      orchestrator._userColor = 'w';
+      orchestrator._engine = {
+        getHistory: () => [],
+        makeMove: jest
+          .fn()
+          .mockReturnValue({ from: 'e2', to: 'e4', san: 'e4' }),
+        game: { fen: () => 'fen-after-e4' },
+      };
+      jest
+        .spyOn(orchestrator, 'getExpectedMoveForCurrentUser')
+        .mockReturnValue({ move: 'e4' });
+      jest.spyOn(orchestrator, 'isUserTurn').mockReturnValue(true);
+    });
+
+    test('should record stats, not advance game, and return correct result for incorrect move', () => {
+      const result = orchestrator.handleUserMove({ from: 'e2', to: 'e3' });
+      expect(StatsStoreMock.recordResult).toHaveBeenCalled();
+      expect(orchestrator._engine.makeMove).not.toHaveBeenCalled();
+      expect(result.isValid).toBe(false);
+      expect(result.expectedMove).toEqual({ move: 'e4' });
+    });
+  });
+
+  describe('handleUserMove (variation complete)', () => {
+    let orchestrator: any;
+    let StatsStoreMock: any;
+    let mockHistory: any[];
+
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+      StatsStoreMock = { recordResult: jest.fn() };
+      orchestrator.statsStore = StatsStoreMock;
+      orchestrator._currentVariation = {
+        moves: [
+          { from: 'e2', to: 'e4' }, // Move 1
+          { from: 'e7', to: 'e5' }, // Move 2 (last move for this variation)
+        ],
+      };
+      orchestrator._userColor = 'w';
+
+      // Initial history before the user makes the last move
+      mockHistory = [{ from: 'e2', to: 'e4', san: 'e4' }];
+
+      orchestrator._engine = {
+        getHistory: jest.fn(() => mockHistory),
+        makeMove: jest.fn((moveMade) => {
+          // Simulate adding the move to history
+          // In a real engine, makeMove would update its internal history
+          mockHistory.push({ ...moveMade, san: moveMade.san || moveMade.to });
+          return { ...moveMade, san: moveMade.san || moveMade.to };
+        }),
+        game: { fen: () => 'final-fen' },
+      };
+
+      // Mock getExpectedMoveForCurrentUser to return the move the user is about to make
+      jest
+        .spyOn(orchestrator, 'getExpectedMoveForCurrentUser')
+        .mockReturnValue({ from: 'e7', to: 'e5' });
+      jest.spyOn(orchestrator, 'isUserTurn').mockReturnValue(true);
+    });
+
+    test('should return isVariationComplete true when last move is played', () => {
+      const result = orchestrator.handleUserMove({ from: 'e7', to: 'e5' });
+      expect(result.isValid).toBe(true);
+      expect(orchestrator._engine.makeMove).toHaveBeenCalledWith({
+        from: 'e7',
+        to: 'e5',
+      });
+      // After the move, history should have 2 items
+      expect(mockHistory.length).toBe(2);
+      expect(result.isVariationComplete).toBe(true);
+      expect(result.nextFen).toBe('final-fen');
+    });
+  });
+
+  describe('getVariationPlayCount', () => {
+    let orchestrator: any;
+    let StatsStoreMock: any;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+      StatsStoreMock = {
+        getStats: jest.fn().mockReturnValue({ attempts: 3, successes: 2 }),
+      };
+      orchestrator.statsStore = StatsStoreMock;
+    });
+
+    test('should return the play count (attempts) for a given variation key', () => {
+      const key = 'e4_e5_Nf3';
+      const count = orchestrator.getVariationPlayCount(key);
+      expect(StatsStoreMock.getStats).toHaveBeenCalledWith(key);
+      expect(count).toBe(3);
+    });
+
+    test('should return 0 if the variation key is not found in stats', () => {
+      StatsStoreMock.getStats.mockReturnValue({ attempts: 0, successes: 0 });
+      const key = 'd4_d5_c4';
+      const count = orchestrator.getVariationPlayCount(key);
+      expect(StatsStoreMock.getStats).toHaveBeenCalledWith(key);
+      expect(count).toBe(0);
+    });
+  });
 });
