@@ -122,14 +122,14 @@ This checklist emphasizes strict TDD: (a) No production code without a failing t
         *   `[x] Code:` Create basic `TrainingOrchestrator` class.
     *   `[x] Test:` `loadPgn(pgnString)`: Fails if PGN string is empty or invalid.
         *   `[x] Code:` Add `loadPgn` method, basic validation.
-    *   `[ ] Test:` `loadPgn(pgnString)`: Successfully parses a simple PGN string (e.g., "1. e4 e5") and stores parsed data (use a mock `VariationParser`).
-        *   `[ ] Code:` Integrate `VariationParser` (or mock), store result.
+    *   `[x] Test:` `loadPgn(pgnString)`: Successfully parses a simple PGN string (e.g., "1. e4 e5") and stores parsed data (use a mock `VariationParser`).
+        *   `[x] Code:` Integrate `VariationParser` (or mock), store result.
     *   `[ ] Test:` `loadPgn(pgnString)`: Successfully parses a PGN string with comments and NAGs.
         *   `[ ] Code:` Ensure `VariationParser` (or mock) handles these.
     *   `[ ] Test:` `loadPgn(pgnString)`: Successfully parses a PGN string with nested variations.
         *   `[ ] Code:` Ensure `VariationParser` (or mock) handles these.
-    *   `[ ] Test:` `getParsedPgn()`: Returns the parsed PGN data or null if not loaded.
-        *   `[ ] Code:` Add `getParsedPgn` method.
+    *   `[x] Test:` `getParsedPgn()`: Returns the parsed PGN data or null if not loaded.
+        *   `[x] Code:` Add `getParsedPgn` method.
     *   `[ ] Test:` `hasPgnLoaded()`: Returns true if PGN is loaded, false otherwise.
         *   `[ ] Code:` Add `hasPgnLoaded` method.
     *   `[ ] Test:` `generateVariationKey(variationMoves)`: Generates a consistent hash/key for a given sequence of moves.
