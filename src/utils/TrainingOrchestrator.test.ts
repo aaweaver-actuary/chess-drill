@@ -512,4 +512,22 @@ describe('TrainingOrchestrator', () => {
       expect(orchestrator.getCurrentVariation()).toBe(variations[1]);
     });
   });
+
+  describe('getCurrentVariationKey', () => {
+    let orchestrator: TrainingOrchestrator;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+    });
+
+    test('should return an empty string if no variation is selected', () => {
+      expect(orchestrator.getCurrentVariationKey()).toBe('');
+    });
+
+    test('should return the correct key for the current variation', () => {
+      const variation = { moves: [{ move: 'e4' }, { move: 'e5' }], tags: { White: 'User' } };
+      // @ts-ignore (simulate private property for test)
+      orchestrator._currentVariation = variation;
+      expect(orchestrator.getCurrentVariationKey()).toBe('e4_e5');
+    });
+  });
 });

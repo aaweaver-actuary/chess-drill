@@ -71,6 +71,11 @@ export class TrainingOrchestrator {
     return this._currentVariation;
   }
 
+  public getCurrentVariationKey(): string {
+    if (!this._currentVariation) return '';
+    return this.generateVariationKey(this._currentVariation.moves);
+  }
+
   /**
    * Selects a random variation from the provided array.
    * Returns undefined if the array is empty.
