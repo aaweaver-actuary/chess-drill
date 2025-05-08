@@ -67,4 +67,32 @@ describe('TrainingOrchestrator', () => {
       expect(orchestrator.getParsedPgn()).toBeNull();
     });
   });
+
+  describe('hasPgnLoaded', () => {
+    test('should return false if PGN has not been loaded', () => {
+      const orchestrator = new TrainingOrchestrator();
+      expect(orchestrator.hasPgnLoaded()).toBe(false);
+    });
+
+    test('should return true if PGN has been successfully loaded', () => {
+      const orchestrator = new TrainingOrchestrator();
+      const pgnString = '1. e4 e5';
+      const mockParsedPgn: MockParsedPgnData = {
+        moves: [{ move: 'e4' }, { move: 'e5' }],
+        result: '*',
+        tags: {},
+      };
+      mockParse.mockReturnValue(mockParsedPgn);
+      orchestrator.loadPgn(pgnString);
+      expect(orchestrator.hasPgnLoaded()).toBe(true);
+    });
+
+    test('should return false if PGN loading resulted in null (invalid PGN)', () => {
+      const orchestrator = new TrainingOrchestrator();
+      const pgnString = 'invalid pgn';
+      mockParse.mockReturnValue(null);
+      orchestrator.loadPgn(pgnString);
+      expect(orchestrator.hasPgnLoaded()).toBe(false);
+    });
+  });
 });

@@ -29,4 +29,8 @@ export class TrainingOrchestrator {
   public getParsedPgn(): ParsedPgn | null {
     return this.parsedPgn;
   }
+
+  public hasPgnLoaded(): boolean {
+    return this.parsedPgn !== null;
+  }
 }
