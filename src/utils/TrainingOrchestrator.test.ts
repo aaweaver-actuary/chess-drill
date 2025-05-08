@@ -1,6 +1,6 @@
 import { TrainingOrchestrator } from '@/utils/TrainingOrchestrator';
-import { describe, test, expect, jest } from '@jest/globals'; // Import jest
-import { VariationParser } from './VariationParser'; // Import VariationParser
+import { describe, test, expect, jest, beforeEach } from '@jest/globals'; // Import jest
+import { VariationParser } from '@/utils/VariationParser'; // Import VariationParser
 
 // Mock VariationParser
 jest.mock('./VariationParser');
@@ -13,6 +13,16 @@ interface MockParsedPgnData {
   moves: { move: string }[];
   result: string;
   tags: Record<string, any>; // Allow any for tags in mock
+}
+
+interface MockParsedPgnWithComments extends MockParsedPgnData {
+  comments: string[];
+}
+interface MockParsedPgnWithNags extends MockParsedPgnData {
+  nags: string[];
+}
+interface MockParsedPgnWithRav extends MockParsedPgnData {
+  rav: { moves: { move: string }[] }[];
 }
 
 describe('TrainingOrchestrator', () => {
@@ -112,8 +122,9 @@ describe('TrainingOrchestrator', () => {
       const pgnStringWithRav = '1. e4 (1... d5 2. exd5) e5';
       const mockParsedPgnWithRav = {
         moves: [
-          { move: 'e4',
-            rav: [{ moves: [{move: 'd5'}, {move: 'exd5'}] }] // Simplified RAV structure
+          {
+            move: 'e4',
+            rav: [{ moves: [{ move: 'd5' }, { move: 'exd5' }] }], // Simplified RAV structure
           },
           { move: 'e5' },
         ],
