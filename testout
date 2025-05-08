@@ -1,0 +1,7 @@
+
+> chess-drill@0.1.0 test
+> jest --watchAll --passWithNoTests
+
+
+
+

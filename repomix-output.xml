@@ -1,0 +1,960 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+4. Repository files, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+<additional_info>
+
+</additional_info>
+
+</file_summary>
+
+<directory_structure>
+src/
+  app/
+    globals.css
+    layout.tsx
+    page.tsx
+  components/
+    ChessBoard.tsx
+  enums/
+    ChessPiece.ts
+    ChessPieceColor.ts
+    ChessSquare.ts
+  types/
+    StatsStore.d.ts
+  utils/
+    ChessEngine.ts
+    sanToSquare.test.ts
+    sanToSquare.ts
+    Scheduler.ts
+    StatsStore.ts
+    VariationParser.ts
+.repomixignore
+eslint.config.mjs
+jest.config.js
+next.config.ts
+package.json
+postcss.config.mjs
+README.md
+repomix.config.json
+tsconfig.json
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="src/components/ChessBoard.tsx">
+'use client';
+
+import { Chess, Piece, Square } from 'chess.js';
+import { get } from 'http';
+import React, { useState } from 'react';
+import { Chessboard } from 'react-chessboard';
+
+interface ChessBoardProps {
+  position: string;
+  onDrop: {
+    (sourceSquare: Square, targetSquare: Square, piece: Piece): boolean;
+  };
+}
+
+/**
+ * @param {{position:string, onDrop:OnDropType}: ChessBoardProps} props
+ * @returns {React.JSX.Element}
+ * @description A chessboard component that displays the current position of the chess pieces and allows the user to move them.
+ * @example
+ * <ChessBoard
+ *    position="start"
+ *    onDrop={
+ *      (sourceSquare, targetSquare) => console.log(sourceSquare, targetSquare)
+ *    }
+ * />
+ */
+export function ChessBoard({}: ChessBoardProps): React.JSX.Element {
+  const [game, setGame] = useState(new Chess());
+  const [moveFrom, setMoveFrom] = useState('');
+  const [moveTo, setMoveTo] = useState<Square | null>(null);
+  const [showPromotionDialog, setShowPromotionDialog] = useState(false);
+  const [rightClickedSquares, setRightClickedSquares] = useState({});
+  const [moveSquares, setMoveSquares] = useState({});
+  const [optionSquares, setOptionSquares] = useState({});
+
+  function isPieceOnSquare(square: Square): boolean {
+    const piece = game.get(square);
+    return !(piece === null);
+  }
+
+  function getPieceOnSquare(square: Square): string {
+    const piece = game.get(square);
+    if (piece) {
+      return piece.type;
+    }
+    return '';
+  }
+
+  function getPieceColorOnSquare(square: Square): string | null {
+    const piece = game.get(square);
+    if (piece) {
+      return piece.color;
+    }
+    return null;
+  }
+
+  function getPieceTypeOnSquare(square: Square): string {
+    const piece = game.get(square);
+    if (piece) {
+      return piece.type;
+    }
+    return '';
+  }
+
+  function findLegalMoveSquares(square: Square): string[] {
+    const piece = getPieceOnSquare(square);
+    const pieceColor = getPieceColorOnSquare(square);
+    const pieceType = getPieceTypeOnSquare(square);
+    if (!piece) {
+      return [];
+    }
+
+    if (!pieceColor || !pieceType) {
+      return [];
+    }
+
+    const moves = game.moves({
+      square,
+      verbose: true,
+    });
+    const legalMoves = moves.filter((move: any) => {
+      const movePiece = game.get(move.to) || null;
+      if (movePiece) {
+        return movePiece.color !== pieceColor;
+      } else {
+        return true;
+      }
+    });
+    return legalMoves.map((move: any) => move.to);
+  }
+
+  function isWhitePiece(square: Square): boolean {
+    return getPieceColorOnSquare(square) === 'w';
+  }
+
+  function isBlackPiece(square: Square): boolean {
+    return getPieceColorOnSquare(square) === 'b';
+  }
+
+  function isPawn(square: Square): boolean {
+    return getPieceTypeOnSquare(square) === 'p';
+  }
+
+  function isKnight(square: Square): boolean {
+    return getPieceTypeOnSquare(square) === 'n';
+  }
+
+  function isBishop(square: Square): boolean {
+    return getPieceTypeOnSquare(square) === 'b';
+  }
+
+  function isRook(square: Square): boolean {
+    return getPieceTypeOnSquare(square) === 'r';
+  }
+
+  function isQueen(square: Square): boolean {
+    return getPieceTypeOnSquare(square) === 'q';
+  }
+
+  function isKing(square: Square): boolean {
+    return getPieceTypeOnSquare(square) === 'k';
+  }
+
+  function hasValidMove(square: Square): boolean {
+    const piece = game.get(square);
+    if (!piece) {
+      return false;
+    }
+    const pieceColor = getPieceColorOnSquare(square);
+    const pieceType = getPieceTypeOnSquare(square);
+    const moves = game.moves({
+      square,
+      verbose: true,
+    });
+    const legalMoves = moves.filter((move: any) => {
+      const movePiece = game.get(move.to) || null;
+      if (movePiece) {
+        return getPieceColorOnSquare(move.to) !== pieceColor;
+      } else {
+        return true;
+      }
+    });
+    return legalMoves.length > 0;
+  }
+
+  function isPromotionMove(square: Square): boolean {
+    const piece = game.get(square);
+    if (!piece) {
+      return false;
+    }
+
+    // A white pawn can promote on rank 8/black on rank 1
+    const isWhitePromotion = isWhitePiece(square) && square[1] === '8';
+    const isBlackPromotion = isBlackPiece(square) && square[1] === '1';
+
+    // A promotion move is a pawn that has reached the last rank
+    return isPawn(square) && (isWhitePromotion || isBlackPromotion);
+  }
+
+  function onSquareClick(square: Square) {
+    setRightClickedSquares({});
+
+    const currentSquare = square as string;
+    const piece = getPieceOnSquare(square);
+    const pieceColor = getPieceColorOnSquare(square);
+    const pieceType = getPieceTypeOnSquare(square);
+
+    // to square
+    if (!moveTo) {
+      // check if valid move before showing dialog
+      if (!hasValidMove(square)) {
+        return;
+      }
+
+      // valid move
+      setMoveTo(square);
+
+      // if promotion move
+      if (isPromotionMove(square)) {
+        // show promotion dialog
+        setShowPromotionDialog(true);
+        return;
+      }
+
+      // is normal move
+      const gameCopy: any = {
+        ...game,
+      };
+      const move = gameCopy.move({
+        from: moveFrom,
+        to: square,
+        promotion: 'q',
+      });
+
+      setGame(gameCopy);
+      setMoveFrom('');
+      setMoveTo(null);
+      setOptionSquares({});
+      return;
+    }
+  }
+
+  function onPromotionPieceSelect(piece: string[]) {
+    // if no piece passed then user has cancelled dialog, don't make move and reset
+    if (piece) {
+      const gameCopy: any = {
+        ...game,
+      };
+      gameCopy.move({
+        from: moveFrom,
+        to: moveTo || '',
+        promotion: piece[1].toLowerCase() ?? 'q',
+      });
+      setGame(gameCopy);
+    }
+    setMoveFrom('');
+    setMoveTo(null);
+    setShowPromotionDialog(false);
+    setOptionSquares({});
+    return true;
+  }
+
+  function onSquareRightClick(square: string | number) {
+    const colour = 'rgba(0, 0, 255, 0.4)';
+    setRightClickedSquares({
+      ...rightClickedSquares,
+      [square]: {
+        backgroundColor: colour,
+        borderRadius: '50%',
+        boxShadow: `0 0 10px ${colour}`,
+      },
+    });
+  }
+
+  return (
+    <div>
+      <Chessboard
+        id="ClickToMove"
+        animationDuration={200}
+        arePiecesDraggable={false}
+        position={game.fen()}
+        onSquareClick={onSquareClick}
+        onSquareRightClick={onSquareRightClick}
+        customBoardStyle={{
+          borderRadius: '4px',
+          boxShadow: '0 2px 10px rgba(0, 0, 0, 0.5)',
+        }}
+        customSquareStyles={{
+          ...moveSquares,
+          ...optionSquares,
+          ...rightClickedSquares,
+        }}
+        promotionToSquare={moveTo}
+        showPromotionDialog={showPromotionDialog}
+      />
+    </div>
+  );
+}
+</file>
+
+<file path="src/enums/ChessPiece.ts">
+export enum ChessPiece {
+  Pawn = 'p',
+  Knight = 'n',
+  Bishop = 'b',
+  Rook = 'r',
+  Queen = 'q',
+  King = 'k'
+}
+</file>
+
+<file path="src/enums/ChessPieceColor.ts">
+export enum ChessPieceColor {
+  White = 1,
+  Black = 0
+}
+</file>
+
+<file path="src/enums/ChessSquare.ts">
+/**
+ * ChessSquare enum represents the squares on a chessboard.
+ * Each square is represented by a unique number from 0 to 63.
+ * The squares are arranged in a standard chessboard layout, starting from A1 to H8.
+ */
+export enum ChessSquare {
+  A1 = 0,
+  A2 = 1,
+  A3 = 2,
+  A4 = 3,
+  A5 = 4,
+  A6 = 5,
+  A7 = 6,
+  A8 = 7,
+  B1 = 8,
+  B2 = 9,
+  B3 = 10,
+  B4 = 11,
+  B5 = 12,
+  B6 = 13,
+  B7 = 14,
+  B8 = 15,
+  C1 = 16,
+  C2 = 17,
+  C3 = 18,
+  C4 = 19,
+  C5 = 20,
+  C6 = 21,
+  C7 = 22,
+  C8 = 23,
+  D1 = 24,
+  D2 = 25,
+  D3 = 26,
+  D4 = 27,
+  D5 = 28,
+  D6 = 29,
+  D7 = 30,
+  D8 = 31,
+  E1 = 32,
+  E2 = 33,
+  E3 = 34,
+  E4 = 35,
+  E5 = 36,
+  E6 = 37,
+  E7 = 38,
+  E8 = 39,
+  F1 = 40,
+  F2 = 41,
+  F3 = 42,
+  F4 = 43,
+  F5 = 44,
+  F6 = 45,
+  F7 = 46,
+  F8 = 47,
+  G1 = 48,
+  G2 = 49,
+  G3 = 50,
+  G4 = 51,
+  G5 = 52,
+  G6 = 53,
+  G7 = 54,
+  G8 = 55,
+  H1 = 56,
+  H2 = 57,
+  H3 = 58,
+  H4 = 59,
+  H5 = 60,
+  H6 = 61,
+  H7 = 62,
+  H8 = 63
+}
+</file>
+
+<file path="src/types/StatsStore.d.ts">
+export type StatsKey = string | number;
+
+/**
+ * @typedef {Object} StatsEntry
+ * @property {number} attempts - Number of attempts for this variation.
+ * @property {number} successes - Number of successful attempts for this variation.
+ */
+export interface StatsEntry {
+  attempts: number;
+  successes: number;
+}
+</file>
+
+<file path="src/utils/ChessEngine.ts">
+import { Chess } from 'chess.js';
+
+/**
+ * @interface IChessEngine
+ * @method loadPgn
+ * @method makeMove
+ * @method reset
+ */
+
+/**
+ * ChessEngine wraps chess.js to provide a clean interface.
+ */
+export class ChessEngine {
+  game: Chess;
+  constructor() {
+    /** @private */
+    this.game = new Chess();
+  }
+
+  /**
+   * Load a full PGN string into the engine.
+   * @param {string} pgn - PGN text.
+   * @returns {boolean} True if parsed successfully.
+   */
+  loadPgn(pgn: string) {
+    return this.game.loadPgn(
+      pgn,
+      { sloppy: true } as any // TODO: Add interface for "LoadPgnOptions" with sloppy, string, newLineChar
+    );
+  }
+
+  /**
+   * Attempt a move in SAN or {from,to} format.
+   * @param {string|object} move - SAN string or move object.
+   * @returns {object|null} The move object if legal, else null.
+   */
+  makeMove(move: string | { from: string; to: string; promotion?: string; }) {
+    return this.game.move(move) || null;
+  }
+
+  /**
+   * Get the current move history in verbose form.
+   * @returns {Array<object>}
+   */
+  getHistory() {
+    return this.game.history({ verbose: true });
+  }
+
+  /**
+   * Reset the game to initial position.
+   */
+  reset() {
+    this.game.reset();
+  }
+}
+</file>
+
+<file path="src/utils/sanToSquare.test.ts">
+import sanToSquare from '@/utils/sanToSquare';
+import { ChessSquare } from '@/enums/ChessSquare';
+import { describe, test, expect } from '@jest/globals';
+
+describe('sanToSquare', () => {
+  test('should convert "a1" to ChessSquare.A1', () => {
+    expect(sanToSquare('a1')).toBe(ChessSquare.A1);
+  });
+
+  test('should convert "h1" to ChessSquare.H1', () => {
+    expect(sanToSquare('h1')).toBe(ChessSquare.H1);
+  });
+
+  test('should convert "a8" to ChessSquare.A8', () => {
+    expect(sanToSquare('a8')).toBe(ChessSquare.A8);
+  });
+
+  test('should convert "h8" to ChessSquare.H8', () => {
+    expect(sanToSquare('h8')).toBe(ChessSquare.H8);
+  });
+
+  test('should convert "e4" to ChessSquare.E4', () => {
+    expect(sanToSquare('e4')).toBe(ChessSquare.E4);
+  });
+
+  test('should convert "d5" to ChessSquare.D5', () => {
+    expect(sanToSquare('d5')).toBe(ChessSquare.D5);
+  });
+
+  test('should convert "c3" to ChessSquare.C3', () => {
+    expect(sanToSquare('c3')).toBe(ChessSquare.C3);
+  });
+
+  test('should convert "f6" to ChessSquare.F6', () => {
+    expect(sanToSquare('f6')).toBe(ChessSquare.F6);
+  });
+});
+</file>
+
+<file path="src/utils/sanToSquare.ts">
+import { ChessSquare } from "@/enums/ChessSquare";
+
+interface FileToIdx {
+  [key: string]: number;
+}
+
+/**
+ * sanToSquare function converts a standard algebraic notation (SAN) string to a ChessSquare enum value.
+ * The SAN string should be in the format of a chess move, e.g., "e4", "Nf3", etc.
+ * The function returns the corresponding ChessSquare enum value.
+ */
+export default function sanToSquare(san: string): ChessSquare {
+  const fileToIdx: FileToIdx = {
+    a: 0,
+    b: 1,
+    c: 2,
+    d: 3,
+    e: 4,
+    f: 5,
+    g: 6,
+    h: 7,
+  }
+  const fileChar = san.charAt(0).toLowerCase();
+  const file = fileToIdx[fileChar];
+  const rankChar = san.charAt(1);
+  const rank = parseInt(rankChar, 10) - 1;
+  if (isNaN(rank) || rank < 0 || rank > 7 || file === undefined) {
+    throw new Error(`Invalid SAN: ${san}`);
+  }
+  if (file < 0 || file > 7) {
+    throw new Error(`Invalid file: ${fileChar}`);
+  }
+  return file*8 + rank as ChessSquare;
+}
+</file>
+
+<file path="src/utils/Scheduler.ts">
+import { fsrs, generatorParameters, createEmptyCard, Rating } from 'ts-fsrs';
+
+enum State {
+  New = 0,
+  Learning = 1,
+  Review = 2,
+  Relearning = 3,
+}
+
+interface Card {
+    difficulty: number;
+    due: Date;
+    elapsed_days: number;
+    lapses: number;
+    last_review?: Date;
+    reps: number;
+    scheduled_days: number;
+    stability: number;
+    state: State;
+}
+
+/**
+ * Scheduler wraps ts-fsrs to compute next review intervals.
+ */
+export class Scheduler {
+  scheduler: any;
+  constructor() {
+    const params = generatorParameters({ enable_fuzz: true });
+    /** @private */
+    this.scheduler = fsrs(params);
+  }
+
+  /**
+   * Create a new card state at a given date.
+   * @param {Date} date 
+   * @returns {Card} FSRS card.
+   */
+  createCard(date: Date = new Date()): Card {
+    return createEmptyCard(date);
+  }
+
+  /**
+   * Given a card and a quality rating, compute next intervals.
+   * @param {Card} card - FSRS card.
+   * @param {Rating} quality - Recall quality (0=Forgot,4=Mastered).
+   * @returns {Card[]} Next scheduled card states.
+   */
+  schedule(card: Card, quality: Rating): Card[] {
+    return this.scheduler.repeat(card, new Date(), quality);
+  }
+}
+</file>
+
+<file path="src/utils/StatsStore.ts">
+import { StatsKey, StatsEntry } from "@/types/StatsStore";
+
+
+/**
+ * StatsStore tracks attempts and successes keyed by variation.
+ */
+export class StatsStore {
+  private store: Record<string, StatsEntry>;
+  constructor() {
+    /** @private @type {Record<StatsKey, StatsEntry>} */
+    this.store = {};
+  }
+
+  /**
+   * Record a drill result.
+   * @param {StatsKey} key - Unique variation key (e.g. SAN sequence).
+   * @param {boolean} success - Whether the attempt was correct.
+   */
+  recordResult(key: StatsKey, success: boolean): void {
+    const prev = this.store[key] ?? { attempts: 0, successes: 0 };
+    this.store[key] = {
+      attempts: prev.attempts + 1,
+      successes: prev.successes + (success ? 1 : 0),
+    };
+  }
+
+  /**
+   * Get stats for a variation.
+   * @param {StatsKey} key
+   * @returns {{attempts:number,successes:number}}
+   */
+  getStats(key: StatsKey): StatsEntry {
+    return this.store[key] || { attempts: 0, successes: 0 };
+  }
+}
+</file>
+
+<file path="src/utils/VariationParser.ts">
+import pgnParser from 'pgn-parser';
+
+/**
+ * VariationParser extracts a full variation tree from PGN.
+ */
+export class VariationParser {
+  /**
+   * Parse PGN and return structured JSON, including RAVs.
+   * @param {string} pgn
+   * @returns {object} Parsed result (tags + moves + ravs).
+   */
+  parse(pgn: string) {
+    const [result] = pgnParser.parse(pgn);
+    return result;
+  }
+}
+</file>
+
+<file path=".repomixignore">
+# Add patterns to ignore here, one per line
+# Example:
+# *.log
+# tmp/
+
+package-lock.json 
+.next/
+.vscode/ 
+node_modules/
+pubic/
+repomix.config.json/
+.prettierrc
+.gitignore
+repomix-output.xml
+*.svg
+*.prompt
+</file>
+
+<file path="jest.config.js">
+// filepath: jest.config.js
+/** @type {import('ts-jest').JestConfigWithTsJest} */
+module.exports = {
+  preset: 'ts-jest',
+  testEnvironment: 'node',
+  // Optional: Configure path aliases like '@/' if you use them
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+  },
+};
+</file>
+
+<file path="repomix.config.json">
+{
+  "input": {
+    "maxFileSize": 52428800
+  },
+  "output": {
+    "filePath": "repomix-output.xml",
+    "style": "xml",
+    "parsableStyle": false,
+    "fileSummary": true,
+    "directoryStructure": true,
+    "files": true,
+    "removeComments": false,
+    "removeEmptyLines": false,
+    "compress": false,
+    "topFilesLength": 5,
+    "showLineNumbers": false,
+    "copyToClipboard": false,
+    "git": {
+      "sortByChanges": true,
+      "sortByChangesMaxCommits": 100
+    }
+  },
+  "include": [],
+  "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": []
+  },
+  "security": {
+    "enableSecurityCheck": true
+  },
+  "tokenCount": {
+    "encoding": "o200k_base"
+  }
+}
+</file>
+
+<file path="src/app/globals.css">
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+</file>
+
+<file path="src/app/layout.tsx">
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Create Next App",
+  description: "Generated by create next app",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en">
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
+        {children}
+      </body>
+    </html>
+  );
+}
+</file>
+
+<file path="src/app/page.tsx">
+'use client';
+import { ChessBoard } from "@/components/ChessBoard";
+
+export default function Home() {
+  return (
+    <div className="flex items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
+        <ChessBoard 
+          position="start"
+          onDrop={(sourceSquare, targetSquare) =>
+            true
+          }
+        />
+    </div>
+  );
+}
+</file>
+
+<file path="eslint.config.mjs">
+import { dirname } from "path";
+import { fileURLToPath } from "url";
+import { FlatCompat } from "@eslint/eslintrc";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const compat = new FlatCompat({
+  baseDirectory: __dirname,
+});
+
+const eslintConfig = [
+  ...compat.extends("next/core-web-vitals", "next/typescript"),
+];
+
+export default eslintConfig;
+</file>
+
+<file path="next.config.ts">
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  /* config options here */
+};
+
+export default nextConfig;
+</file>
+
+<file path="package.json">
+{
+  "name": "chess-drill",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "jest --watchAll --passWithNoTests"
+  },
+  "dependencies": {
+    "chess.js": "^1.2.0",
+    "next": "15.3.1",
+    "pgn-parser": "^2.2.1",
+    "react": "^19.0.0",
+    "react-chessboard": "^4.7.3",
+    "react-dom": "^19.0.0",
+    "ts-fsrs": "^4.7.1"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^20",
+    "@types/pgn-parser": "^2.1.3",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.3.1",
+    "jest": "^29.7.0",
+    "tailwindcss": "^4",
+    "ts-jest": "^29.3.2",
+    "typescript": "^5"
+  }
+}
+</file>
+
+<file path="postcss.config.mjs">
+const config = {
+  plugins: ["@tailwindcss/postcss"],
+};
+
+export default config;
+</file>
+
+<file path="README.md">
+# ChessDrill.js
+
+`ChessDrill.js` is a JavaScript library designed to help chess players improve their skills through interactive drills and exercises. The library provides a set of functions and classes that allow users to create, manage, and solve chess puzzles.
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
+</file>
+
+</files>

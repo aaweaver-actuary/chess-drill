@@ -1,0 +1,44 @@
+PASS src/utils/sanToSquare.test.ts
+FAIL src/utils/TrainingOrchestrator.test.ts
+  ● TrainingOrchestrator › loadPgn › should throw an error if the PGN string is empty
+
+    expect(received).toThrow(expected)
+
+    Expected substring: "PGN string cannot be empty."
+    Received message:   "orchestrator.loadPgn is not a function"
+
+          11 |     test('should throw an error if the PGN string is empty', () => {
+          12 |       const orchestrator = new TrainingOrchestrator();
+        > 13 |       expect(() => orchestrator.loadPgn('')).toThrow(
+             |                                 ^
+          14 |         'PGN string cannot be empty.',
+          15 |       );
+          16 |     });
+
+      at src/utils/TrainingOrchestrator.test.ts:13:33
+      at Object.<anonymous> (node_modules/expect/build/toThrowMatchers.js:74:11)
+      at Object.throwingMatcher [as toThrow] (node_modules/expect/build/index.js:320:21)
+      at Object.<anonymous> (src/utils/TrainingOrchestrator.test.ts:13:46)
+      at Object.<anonymous> (src/utils/TrainingOrchestrator.test.ts:13:46)
+
+Test Suites: 1 failed, 1 passed, 2 total
+Tests:       1 failed, 9 passed, 10 total
+Snapshots:   0 total
+Time:        0.363 s, estimated 1 s
+Ran all test suites.
+PASS src/utils/sanToSquare.test.ts
+PASS src/utils/TrainingOrchestrator.test.ts
+
+Test Suites: 2 passed, 2 total
+Tests:       10 passed, 10 total
+Snapshots:   0 total
+Time:        0.318 s, estimated 1 s
+Ran all test suites.
+PASS src/utils/sanToSquare.test.ts
+PASS src/utils/TrainingOrchestrator.test.ts
+
+Test Suites: 2 passed, 2 total
+Tests:       10 passed, 10 total
+Snapshots:   0 total
+Time:        0.298 s, estimated 1 s
+Ran all test suites.

@@ -1,0 +1,16 @@
+# Add patterns to ignore here, one per line
+# Example:
+# *.log
+# tmp/
+
+package-lock.json 
+.next/
+.vscode/ 
+node_modules/
+pubic/
+repomix.config.json/
+.prettierrc
+.gitignore
+repomix-output.xml
+*.svg
+*.prompt
