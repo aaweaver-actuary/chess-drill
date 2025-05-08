@@ -555,4 +555,15 @@ describe('TrainingOrchestrator', () => {
       expect(orchestrator.determineUserColor(variation)).toBeUndefined();
     });
   });
+
+  describe('startTrainingSession', () => {
+    let orchestrator: TrainingOrchestrator;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+    });
+
+    test('should throw an error if PGN is not loaded', () => {
+      expect(() => orchestrator.startTrainingSession()).toThrow('PGN must be loaded before starting a training session.');
+    });
+  });
 });

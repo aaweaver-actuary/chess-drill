@@ -160,4 +160,11 @@ export class TrainingOrchestrator {
 
     return flatVariations;
   }
+
+  public startTrainingSession(userPlaysAs?: 'w' | 'b'): void {
+    if (!this.hasPgnLoaded()) {
+      throw new Error('PGN must be loaded before starting a training session.');
+    }
+    // Further logic will be implemented in the next steps
+  }
 }
