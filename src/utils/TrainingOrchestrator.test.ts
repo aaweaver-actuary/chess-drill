@@ -524,10 +524,35 @@ describe('TrainingOrchestrator', () => {
     });
 
     test('should return the correct key for the current variation', () => {
-      const variation = { moves: [{ move: 'e4' }, { move: 'e5' }], tags: { White: 'User' } };
+      const variation = {
+        moves: [{ move: 'e4' }, { move: 'e5' }],
+        tags: { White: 'User' },
+      };
       // @ts-ignore (simulate private property for test)
       orchestrator._currentVariation = variation;
       expect(orchestrator.getCurrentVariationKey()).toBe('e4_e5');
+    });
+  });
+
+  describe('determineUserColor', () => {
+    let orchestrator: TrainingOrchestrator;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+    });
+
+    test('should return "w" if the first move is a White move (e.g., e4)', () => {
+      const variation = { moves: [{ move: 'e4' }, { move: 'e5' }] };
+      expect(orchestrator.determineUserColor(variation)).toBe('w');
+    });
+
+    test('should return "b" if the first move is a Black move (e.g., ...e5)', () => {
+      const variation = { moves: [{ move: '...e5' }, { move: 'Nf3' }] };
+      expect(orchestrator.determineUserColor(variation)).toBe('b');
+    });
+
+    test('should return undefined if moves array is empty', () => {
+      const variation = { moves: [] };
+      expect(orchestrator.determineUserColor(variation)).toBeUndefined();
     });
   });
 });

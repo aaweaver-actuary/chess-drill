@@ -77,6 +77,17 @@ export class TrainingOrchestrator {
   }
 
   /**
+   * Determines if the user plays White or Black based on the first move of the variation.
+   * For MVP: if move starts with '...', user is Black; otherwise, user is White.
+   */
+  public determineUserColor(variation: VariationLine): 'w' | 'b' | undefined {
+    if (!variation.moves || variation.moves.length === 0) return undefined;
+    const firstMove = variation.moves[0].move;
+    if (firstMove.startsWith('...')) return 'b';
+    return 'w';
+  }
+
+  /**
    * Selects a random variation from the provided array.
    * Returns undefined if the array is empty.
    */
