@@ -130,8 +130,8 @@ This checklist emphasizes strict TDD: (a) No production code without a failing t
         *   `[ ] Code:` Ensure `VariationParser` (or mock) handles these.
     *   `[x] Test:` `getParsedPgn()`: Returns the parsed PGN data or null if not loaded.
         *   `[x] Code:` Add `getParsedPgn` method.
-    *   `[ ] Test:` `hasPgnLoaded()`: Returns true if PGN is loaded, false otherwise.
-        *   `[ ] Code:` Add `hasPgnLoaded` method.
+    *   `[x] Test:` `hasPgnLoaded()`: Returns true if PGN is loaded, false otherwise.
+        *   `[x] Code:` Add `hasPgnLoaded` method.
     *   `[ ] Test:` `generateVariationKey(variationMoves)`: Generates a consistent hash/key for a given sequence of moves.
         *   `[ ] Code:` Implement variation key generation (e.g., simple string concatenation or a more robust hashing function).
 
