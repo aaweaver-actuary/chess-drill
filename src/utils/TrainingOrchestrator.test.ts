@@ -9,10 +9,26 @@ const mockParse = jest.fn();
 VariationParser.prototype.parse = mockParse;
 
 // A helper type for the mock PGN data to ensure consistency
-interface MockParsedPgnData {
-  moves: { move: string }[];
-  result: string;
-  tags: Record<string, any>; // Allow any for tags in mock
+export interface MockMove {
+  move: string;
+  comment?: string;
+  nag?: string[];
+  rav?: MockRav[]; // For nested variations
+  // Potentially other PGN move properties
+}
+
+// Define a type for RAV (Recursive Annotation Variation)
+export interface MockRav {
+  moves: MockMove[];
+  // Potentially other RAV properties
+}
+
+// A helper type for the mock PGN data to ensure consistency
+export interface MockParsedPgnData {
+  moves: MockMove[];
+  result?: string;
+  tags?: Record<string, any>; // Allow any for tags in mock
+  // Potentially other top-level PGN properties
 }
 
 interface MockParsedPgnWithComments extends MockParsedPgnData {
@@ -163,6 +179,51 @@ describe('TrainingOrchestrator', () => {
       mockParse.mockReturnValue(null);
       orchestrator.loadPgn(pgnString);
       expect(orchestrator.hasPgnLoaded()).toBe(false);
+    });
+  });
+
+  describe('generateVariationKey', () => {
+    test('should generate a consistent key for a sequence of moves', () => {
+      const orchestrator = new TrainingOrchestrator();
+      // Use the MockMove type for the moves array
+      const moves: MockMove[] = [
+        { move: 'e4' },
+        { move: 'e5' },
+        { move: 'Nf3' },
+      ];
+      const key1 = orchestrator.generateVariationKey(moves);
+      const key2 = orchestrator.generateVariationKey(moves);
+      expect(key1).toBe(key2);
+      expect(key1).toBe('e4_e5_Nf3');
+    });
+
+    test('should generate different keys for different move sequences', () => {
+      const orchestrator = new TrainingOrchestrator();
+      const moves1: MockMove[] = [{ move: 'e4' }, { move: 'e5' }];
+      const moves2: MockMove[] = [{ move: 'd4' }, { move: 'd5' }];
+      const key1 = orchestrator.generateVariationKey(moves1);
+      const key2 = orchestrator.generateVariationKey(moves2);
+      expect(key1).not.toBe(key2);
+    });
+
+    test('should handle empty move sequence', () => {
+      const orchestrator = new TrainingOrchestrator();
+      const moves: MockMove[] = [];
+      const key = orchestrator.generateVariationKey(moves);
+      expect(key).toBe('');
+    });
+
+    test("should generate a key based only on the 'move' property", () => {
+      const orchestrator = new TrainingOrchestrator();
+      const moves1: MockMove[] = [
+        { move: 'e4', comment: 'A comment' },
+        { move: 'e5' },
+      ];
+      const moves2: MockMove[] = [{ move: 'e4' }, { move: 'e5' }];
+      const key1 = orchestrator.generateVariationKey(moves1);
+      const key2 = orchestrator.generateVariationKey(moves2);
+      expect(key1).toBe(key2);
+      expect(key1).toBe('e4_e5');
     });
   });
 });

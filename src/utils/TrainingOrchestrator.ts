@@ -9,6 +9,14 @@ interface ParsedPgn {
   // Add other properties that VariationParser might return
 }
 
+// Interface for the objects expected in the array passed to generateVariationKey
+// Ensures that only the 'move' property is used for generating the key.
+interface MoveForVariationKey {
+  move: string;
+  // Allow other properties to exist on the object, but they won't be used for the key.
+  [key: string]: any;
+}
+
 export class TrainingOrchestrator {
   private variationParser: VariationParser;
   private parsedPgn: ParsedPgn | null = null;
@@ -32,5 +40,13 @@ export class TrainingOrchestrator {
 
   public hasPgnLoaded(): boolean {
     return this.parsedPgn !== null;
+  }
+
+  public generateVariationKey(variationMoves: MoveForVariationKey[]): string {
+    if (!variationMoves || variationMoves.length === 0) {
+      return '';
+    }
+    // Create the key by joining only the 'move' property of each object.
+    return variationMoves.map(m => m.move).join('_');
   }
 }

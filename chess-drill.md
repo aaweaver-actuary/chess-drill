@@ -132,8 +132,8 @@ This checklist emphasizes strict TDD: (a) No production code without a failing t
         *   `[x] Code:` Add `getParsedPgn` method.
     *   `[x] Test:` `hasPgnLoaded()`: Returns true if PGN is loaded, false otherwise.
         *   `[x] Code:` Add `hasPgnLoaded` method.
-    *   `[ ] Test:` `generateVariationKey(variationMoves)`: Generates a consistent hash/key for a given sequence of moves.
-        *   `[ ] Code:` Implement variation key generation (e.g., simple string concatenation or a more robust hashing function).
+    *   `[x] Test:` `generateVariationKey(variationMoves)`: Generates a consistent hash/key for a given sequence of moves.
+        *   `[x] Code:` Implement variation key generation (e.g., simple string concatenation or a more robust hashing function).
 
 *   **`TrainingOrchestrator` - Variation Selection & Management**
     *   `[ ] Test:` `flattenVariations(parsedPgn)`: Converts nested variations from parser output into a flat list of playable variation lines.
