@@ -3,7 +3,7 @@ import { describe, test, expect, jest, beforeEach } from '@jest/globals'; // Imp
 import { VariationParser } from '@/utils/VariationParser'; // Import VariationParser
 
 // Mock VariationParser
-jest.mock('./VariationParser');
+jest.mock('@/utils/VariationParser'); // Corrected mock path
 
 const mockParse = jest.fn();
 VariationParser.prototype.parse = mockParse;
@@ -224,6 +224,217 @@ describe('TrainingOrchestrator', () => {
       const key2 = orchestrator.generateVariationKey(moves2);
       expect(key1).toBe(key2);
       expect(key1).toBe('e4_e5');
+    });
+  });
+
+  // New describe block for flattenVariations
+  describe('flattenVariations', () => {
+    let orchestrator: TrainingOrchestrator;
+
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+      // We don't need to mock VariationParser.parse here as flattenVariations
+      // will take the parsed PGN as an argument.
+    });
+
+    test('should return an empty array if parsedPgn is null', () => {
+      expect(orchestrator.flattenVariations(null)).toEqual([]);
+    });
+
+    test('should return an empty array if parsedPgn has no moves', () => {
+      const parsedPgn: MockParsedPgnData = { moves: [] };
+      expect(orchestrator.flattenVariations(parsedPgn)).toEqual([]);
+    });
+
+    test('should return a single variation for a PGN with no RAVs', () => {
+      const parsedPgn: MockParsedPgnData = {
+        moves: [{ move: 'e4' }, { move: 'e5' }, { move: 'Nf3' }],
+        tags: { White: 'User' }, // Example tag
+      };
+      const expectedFlatVariations = [
+        {
+          moves: [{ move: 'e4' }, { move: 'e5' }, { move: 'Nf3' }],
+          tags: { White: 'User' },
+        },
+      ];
+      expect(orchestrator.flattenVariations(parsedPgn)).toEqual(
+        expectedFlatVariations,
+      );
+    });
+
+    test('should flatten a PGN with a simple RAV at the first move', () => {
+      const parsedPgn: MockParsedPgnData = {
+        moves: [
+          { move: 'e4', rav: [{ moves: [{ move: 'd5' }, { move: 'exd5' }] }] },
+          { move: 'e5' },
+        ],
+        tags: { Event: 'Test Game' },
+      };
+      const expectedFlatVariations = [
+        {
+          moves: [{ move: 'e4' }, { move: 'e5' }],
+          tags: { Event: 'Test Game' },
+        },
+        {
+          moves: [{ move: 'd5' }, { move: 'exd5' }],
+          tags: { Event: 'Test Game' },
+        }, // RAV becomes a separate line
+      ];
+      // Sort for consistent comparison as order might not be guaranteed depending on implementation
+      const result = orchestrator
+        .flattenVariations(parsedPgn)
+        .sort((a, b) => a.moves[0].move.localeCompare(b.moves[0].move));
+      expect(result).toEqual(
+        expectedFlatVariations.sort((a, b) =>
+          a.moves[0].move.localeCompare(b.moves[0].move),
+        ),
+      );
+    });
+
+    test('should flatten a PGN with a RAV deeper in the main line', () => {
+      const parsedPgn: MockParsedPgnData = {
+        moves: [
+          { move: 'e4' },
+          { move: 'e5' },
+          { move: 'Nf3', rav: [{ moves: [{ move: 'Nc6' }, { move: 'Bb5' }] }] },
+          { move: 'Bc4' },
+        ],
+      };
+      const expectedFlatVariations = [
+        {
+          moves: [
+            { move: 'e4' },
+            { move: 'e5' },
+            { move: 'Nf3' },
+            { move: 'Bc4' },
+          ],
+          tags: undefined,
+        },
+        {
+          moves: [
+            { move: 'e4' },
+            { move: 'e5' },
+            { move: 'Nc6' },
+            { move: 'Bb5' },
+          ],
+          tags: undefined,
+        },
+      ];
+      const result = orchestrator
+        .flattenVariations(parsedPgn)
+        .sort((a, b) => a.moves[2].move.localeCompare(b.moves[2].move));
+      expect(result).toEqual(
+        expectedFlatVariations.sort((a, b) =>
+          a.moves[2].move.localeCompare(b.moves[2].move),
+        ),
+      );
+    });
+
+    test('should handle multiple RAVs at the same level', () => {
+      const parsedPgn: MockParsedPgnData = {
+        moves: [
+          {
+            move: 'e4',
+            rav: [
+              { moves: [{ move: 'c5' }] }, // Sicilian
+              { moves: [{ move: 'e5' }] }, // Open Game
+            ],
+          },
+          // No main line continuation after e4 for this test case
+        ],
+      };
+      const expectedFlatVariations = [
+        { moves: [{ move: 'e4' }], tags: undefined }, // Main line up to the branch point
+        { moves: [{ move: 'c5' }], tags: undefined },
+        { moves: [{ move: 'e5' }], tags: undefined },
+      ];
+      const result = orchestrator
+        .flattenVariations(parsedPgn)
+        .sort((a, b) => a.moves[0].move.localeCompare(b.moves[0].move));
+      expect(result).toEqual(
+        expectedFlatVariations.sort((a, b) =>
+          a.moves[0].move.localeCompare(b.moves[0].move),
+        ),
+      );
+    });
+
+    test('should flatten deeply nested RAVs', () => {
+      const parsedPgn: MockParsedPgnData = {
+        moves: [
+          {
+            move: 'e4',
+            rav: [
+              {
+                moves: [
+                  { move: 'c5' },
+                  { move: 'Nf3', rav: [{ moves: [{ move: 'd6' }] }] },
+                ],
+              },
+            ],
+          },
+          { move: 'd4' }, // Main line continuation
+        ],
+      };
+      const expectedFlatVariations = [
+        { moves: [{ move: 'e4' }, { move: 'd4' }], tags: undefined },
+        { moves: [{ move: 'c5' }, { move: 'Nf3' }], tags: undefined },
+        { moves: [{ move: 'c5' }, { move: 'd6' }], tags: undefined },
+      ];
+      // Sorting becomes more complex here, might need a more robust comparison or ensure specific order from flattenVariations
+      const result = orchestrator.flattenVariations(parsedPgn).sort((a, b) => {
+        const len = Math.min(a.moves.length, b.moves.length);
+        for (let i = 0; i < len; i++) {
+          if (a.moves[i].move !== b.moves[i].move)
+            return a.moves[i].move.localeCompare(b.moves[i].move);
+        }
+        return a.moves.length - b.moves.length;
+      });
+      const expectedSorted = expectedFlatVariations.sort((a, b) => {
+        const len = Math.min(a.moves.length, b.moves.length);
+        for (let i = 0; i < len; i++) {
+          if (a.moves[i].move !== b.moves[i].move)
+            return a.moves[i].move.localeCompare(b.moves[i].move);
+        }
+        return a.moves.length - b.moves.length;
+      });
+      expect(result).toEqual(expectedSorted);
+    });
+
+    test('should include comments and NAGs in flattened variations if they exist on moves', () => {
+      const parsedPgn: MockParsedPgnData = {
+        moves: [
+          { move: 'e4', comment: 'Good move' },
+          {
+            move: 'e5',
+            nag: ['$1'],
+            rav: [{ moves: [{ move: 'd5', comment: 'Alternative' }] }],
+          },
+        ],
+      };
+      const expectedFlatVariations = [
+        {
+          moves: [
+            { move: 'e4', comment: 'Good move' },
+            { move: 'e5', nag: ['$1'] },
+          ],
+          tags: undefined,
+        },
+        {
+          moves: [
+            { move: 'e4', comment: 'Good move' },
+            { move: 'd5', comment: 'Alternative' },
+          ],
+          tags: undefined,
+        },
+      ];
+      const result = orchestrator
+        .flattenVariations(parsedPgn)
+        .sort((a, b) => a.moves[1].move.localeCompare(b.moves[1].move));
+      expect(result).toEqual(
+        expectedFlatVariations.sort((a, b) =>
+          a.moves[1].move.localeCompare(b.moves[1].move),
+        ),
+      );
     });
   });
 });

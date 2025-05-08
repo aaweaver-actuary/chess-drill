@@ -136,7 +136,10 @@ This checklist emphasizes strict TDD: (a) No production code without a failing t
         *   `[x] Code:` Implement variation key generation (e.g., simple string concatenation or a more robust hashing function).
 
 *   **`TrainingOrchestrator` - Variation Selection & Management**
-    *   `[ ] Test:` `flattenVariations(parsedPgn)`: Converts nested variations from parser output into a flat list of playable variation lines.
+    *   `[x] Test:` `flattenVariations(parsedPgn)`: Converts nested variations from parser output into a flat list of playable variation lines.
+        *   `[x] Test:` Add comprehensive tests for various PGN structures (no RAVs, simple RAVs, nested RAVs, multiple RAVs at same level, RAVs with comments/NAGs).
+        *   `[x] Code:` Implement `flattenVariations` method using DFS to correctly extract all lines, including from RAVs, and preserve tags.
+    *   `[ ] Test:` `selectRandomVariation(flatVariations)`: Randomly selects one variation from the flattened list.
         *   `[ ] Code:` Implement variation flattening logic.
     *   `[ ] Test:` `selectRandomVariation()`: Fails if PGN not loaded or no variations found after flattening.
         *   `[ ] Code:` Add checks in `selectRandomVariation`.
