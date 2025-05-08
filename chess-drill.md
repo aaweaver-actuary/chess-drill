@@ -139,56 +139,56 @@ This checklist emphasizes strict TDD: (a) No production code without a failing t
     *   `[x] Test:` `flattenVariations(parsedPgn)`: Converts nested variations from parser output into a flat list of playable variation lines.
         *   `[x] Test:` Add comprehensive tests for various PGN structures (no RAVs, simple RAVs, nested RAVs, multiple RAVs at same level, RAVs with comments/NAGs).
         *   `[x] Code:` Implement `flattenVariations` method using DFS to correctly extract all lines, including from RAVs, and preserve tags.
-    *   `[ ] Test:` `selectRandomVariation(flatVariations)`: Randomly selects one variation from the flattened list.
-        *   `[ ] Code:` Implement variation flattening logic.
-    *   `[ ] Test:` `selectRandomVariation()`: Fails if PGN not loaded or no variations found after flattening.
-        *   `[ ] Code:` Add checks in `selectRandomVariation`.
-    *   `[ ] Test:` `selectRandomVariation()`: Selects a main line if only one flat variation exists.
-        *   `[ ] Code:` Implement basic selection from flattened list.
-    *   `[ ] Test:` `selectRandomVariation()`: Selects a variation randomly from multiple flattened variations (mock `Math.random`).
-        *   `[ ] Code:` Implement random selection from flattened list.
-    *   `[ ] Test:` `getCurrentVariation()`: Returns the currently selected flattened variation (e.g., array of move objects).
-        *   `[ ] Code:` Add `getCurrentVariation` method.
-    *   `[ ] Test:` `getCurrentVariationKey()`: Returns the key for the current variation.
-        *   `[ ] Code:` Add `getCurrentVariationKey` method.
-    *   `[ ] Test:` `determineUserColor(variation)`: Determines if the user plays White or Black based on the first move of the variation.
-        *   `[ ] Code:` Implement logic to set user color (e.g., if PGN starts with Black's move, user is Black). For MVP, assume user is always the color making the *first* move in the selected variation snippet.
+    *   `[x] Test:` `selectRandomVariation(flatVariations)`: Randomly selects one variation from the flattened list.
+        *   `[x] Code:` Implement variation flattening logic.
+    *   `[x] Test:` `selectRandomVariation()`: Fails if PGN not loaded or no variations found after flattening.
+        *   `[x] Code:` Add checks in `selectRandomVariation`.
+    *   `[x] Test:` `selectRandomVariation()`: Selects a main line if only one flat variation exists.
+        *   `[x] Code:` Implement basic selection from flattened list.
+    *   `[x] Test:` `selectRandomVariation()`: Selects a variation randomly from multiple flattened variations (mock `Math.random`).
+        *   `[x] Code:` Implement random selection from flattened list.
+    *   `[x] Test:` `getCurrentVariation()`: Returns the currently selected flattened variation (e.g., array of move objects).
+        *   `[x] Code:` Add `getCurrentVariation` method.
+    *   `[x] Test:` `getCurrentVariationKey()`: Returns the key for the current variation.
+        *   `[x] Code:` Add `getCurrentVariationKey` method.
+    *   `[x] Test:` `determineUserColor(variation)`: Determines if the user plays White or Black based on the first move of the variation.
+        *   `[x] Code:` Implement logic to set user color (e.g., if PGN starts with Black's move, user is Black). For MVP, assume user is always the color making the *first* move in the selected variation snippet.
 
 *   **`TrainingOrchestrator` - Game State & Move Handling**
-    *   `[ ] Test:` `startTrainingSession(userPlaysAs?: 'w' | 'b')`: Fails if PGN not loaded.
-        *   `[ ] Code:` Add check.
-    *   `[ ] Test:` `startTrainingSession()`: Selects a variation, determines user color, and initializes internal game state (`ChessEngine`) to the position *before* the first move of the variation.
-        *   `[ ] Code:` Implement session start, set up `ChessEngine`, store user color.
-    *   `[ ] Test:` `startTrainingSession()`: If it's not the user's turn first (e.g., user is Black, variation starts with White's move), automatically makes the initial PGN move(s) until it's user's turn.
-        *   `[ ] Code:` Add logic to play opening moves if necessary.
-    *   `[ ] Test:` `getCurrentFen()`: Returns the FEN of the current board position from `ChessEngine`.
-        *   `[ ] Code:` Add `getCurrentFen` method.
-    *   `[ ] Test:` `getExpectedMoveForCurrentUser()`: Returns the next expected move object (e.g., `{ from, to, san }`) for the current user from the selected variation.
-        *   `[ ] Code:` Implement logic to find the next move for the current player.
-    *   `[ ] Test:` `isUserTurn()`: Returns true if it's the user's turn to move.
-        *   `[ ] Code:` Implement `isUserTurn`.
-    *   `[ ] Test:` `handleUserMove(move: { from: string, to: string, promotion?: string })`: Fails if no training session active or not user's turn.
-        *   `[ ] Code:` Add checks.
-    *   `[ ] Test:` `handleUserMove()`: User makes a correct move (matches variation):
-        *   `[ ] Sub-Test:` Records statistics: increment attempts and successes for the variation key, log time taken, number of clicks (placeholder for now).
-        *   `[ ] Sub-Test:` Advances internal game state in `ChessEngine` with user's move.
-        *   `[ ] Sub-Test:` If variation is not complete, `ChessEngine` plays opponent's corresponding reply from the variation automatically.
-        *   `[ ] Sub-Test:` Returns `{ isValid: true, isVariationComplete: <boolean>, nextFen: <fen_after_opponent_move_or_user_move_if_complete>, opponentMove?: <move_object> }`.
-        *   `[ ] Code:` Implement correct move handling, opponent auto-reply, and stats recording.
-    *   `[ ] Test:` `handleUserMove()`: User makes an incorrect move:
-        *   `[ ] Sub-Test:` Records statistics: increment attempts for the variation key, log time taken, number of clicks.
-        *   `[ ] Sub-Test:` Returns `{ isValid: false, expectedMove: <move_object_of_correct_move> }`.
-        *   `[ ] Sub-Test:` Internal game state in `ChessEngine` does NOT change.
-        *   `[ ] Code:` Implement incorrect move handling and stats recording.
-    *   `[ ] Test:` `handleUserMove()`: User makes the last correct move in the variation (and opponent has no reply in the snippet):
-        *   `[ ] Sub-Test:` Returns `{ isValid: true, isVariationComplete: true, nextFen: <final_fen> }`.
-        *   `[ ] Code:` Implement variation completion logic.
-    *   `[ ] Test:` `getVariationPlayCount(variationKey)`: Returns how many times this specific variation has been started/played.
-        *   `[ ] Code:` Integrate with StatsStore or internal tracking.
-    *   `[ ] Test:` `showCorrectMoveHint()`: Returns the expected move for the current user. (Used by UI).
-        *   `[ ] Code:` Implement `showCorrectMoveHint`.
-    *   `[ ] Test:` `resetCurrentVariation()`: Resets the game to the start of the current variation, preserving play count but allowing a fresh attempt.
-        *   `[ ] Code:` Implement reset logic.
+    *   `[x] Test:` `startTrainingSession(userPlaysAs?: 'w' | 'b')`: Fails if PGN not loaded.
+        *   `[x] Code:` Add check.
+    *   `[x] Test:` `startTrainingSession()`: Selects a variation, determines user color, and initializes internal game state (`ChessEngine`) to the position *before* the first move of the variation.
+        *   `[x] Code:` Implement session start, set up `ChessEngine`, store user color.
+    *   `[x] Test:` `startTrainingSession()`: If it's not the user's turn first (e.g., user is Black, variation starts with White's move), automatically makes the initial PGN move(s) until it's user's turn.
+        *   `[x] Code:` Add logic to play opening moves if necessary.
+    *   `[x] Test:` `getCurrentFen()`: Returns the FEN of the current board position from `ChessEngine`.
+        *   `[x] Code:` Add `getCurrentFen` method.
+    *   `[x] Test:` `getExpectedMoveForCurrentUser()`: Returns the next expected move object (e.g., `{ from, to, san }`) for the current user from the selected variation.
+        *   `[x] Code:` Implement logic to find the next move for the current player.
+    *   `[x] Test:` `isUserTurn()`: Returns true if it's the user's turn to move.
+        *   `[x] Code:` Implement `isUserTurn`.
+    *   `[x] Test:` `handleUserMove(move: { from: string, to: string, promotion?: string })`: Fails if no training session active or not user's turn.
+        *   `[x] Code:` Add checks.
+    *   `[x] Test:` `handleUserMove()`: User makes a correct move (matches variation):
+        *   `[x] Sub-Test:` Records statistics: increment attempts and successes for the variation key, log time taken, number of clicks (placeholder for now).
+        *   `[x] Sub-Test:` Advances internal game state in `ChessEngine` with user's move.
+        *   `[x] Sub-Test:` If variation is not complete, `ChessEngine` plays opponent's corresponding reply from the variation automatically.
+        *   `[x] Sub-Test:` Returns `{ isValid: true, isVariationComplete: <boolean>, nextFen: <fen_after_opponent_move_or_user_move_if_complete>, opponentMove?: <move_object> }`.
+        *   `[x] Code:` Implement correct move handling, opponent auto-reply, and stats recording.
+    *   `[x] Test:` `handleUserMove()`: User makes an incorrect move:
+        *   `[x] Sub-Test:` Records statistics: increment attempts for the variation key, log time taken, number of clicks.
+        *   `[x] Sub-Test:` Returns `{ isValid: false, expectedMove: <move_object_of_correct_move> }`.
+        *   `[x] Sub-Test:` Internal game state in `ChessEngine` does NOT change.
+        *   `[x] Code:` Implement incorrect move handling and stats recording.
+    *   `[x] Test:` `handleUserMove()`: User makes the last correct move in the variation (and opponent has no reply in the snippet):
+        *   `[x] Sub-Test:` Returns `{ isValid: true, isVariationComplete: true, nextFen: <final_fen> }`.
+        *   `[x] Code:` Implement variation completion logic.
+    *   `[x] Test:` `getVariationPlayCount(variationKey)`: Returns how many times this specific variation has been started/played.
+        *   `[x] Code:` Integrate with StatsStore or internal tracking.
+    *   `[x] Test:` `showCorrectMoveHint()`: Returns the expected move for the current user. (Used by UI).
+        *   `[x] Code:` Implement `showCorrectMoveHint`.
+    *   `[x] Test:` `resetCurrentVariation()`: Resets the game to the start of the current variation, preserving play count but allowing a fresh attempt.
+        *   `[x] Code:` Implement reset logic.
 
 ---
 

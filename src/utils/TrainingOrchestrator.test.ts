@@ -925,6 +925,93 @@ describe('TrainingOrchestrator', () => {
     });
   });
 
+  describe('handleUserMove (correct move with opponent auto-reply)', () => {
+    let orchestrator: any;
+    let StatsStoreMock: any;
+    let ChessEngineMockInstance: any;
+
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+      StatsStoreMock = { recordResult: jest.fn() };
+      orchestrator.statsStore = StatsStoreMock;
+
+      // Mock ChessEngine instance and its methods
+      ChessEngineMockInstance = {
+        getHistory: jest.fn(),
+        makeMove: jest.fn(),
+        game: { fen: jest.fn() },
+      };
+      // @ts-ignore
+      orchestrator._engine = ChessEngineMockInstance; // Inject mock instance
+
+      orchestrator._currentVariation = {
+        moves: [
+          { move: 'e4', from: 'e2', to: 'e4' }, // User's move
+          { move: 'e5', from: 'e7', to: 'e5' }, // Opponent's reply
+          { move: 'Nf3', from: 'g1', to: 'f3' }, // User's next move
+        ],
+      };
+      orchestrator._userColor = 'w';
+
+      // User is about to play e4
+      jest.spyOn(orchestrator, 'isUserTurn').mockReturnValue(true);
+      jest
+        .spyOn(orchestrator, 'getExpectedMoveForCurrentUser')
+        .mockReturnValue({ move: 'e4', from: 'e2', to: 'e4' });
+
+      // Simulate history before user's move (empty)
+      ChessEngineMockInstance.getHistory.mockReturnValue([]);
+      // Simulate engine responses
+      ChessEngineMockInstance.makeMove.mockImplementation((move: any) => {
+        // For user's move e4
+        if (move.from === 'e2' && move.to === 'e4') {
+          // Update history to include user's move for subsequent calls
+          ChessEngineMockInstance.getHistory.mockReturnValueOnce([
+            { from: 'e2', to: 'e4', san: 'e4' },
+          ]);
+          ChessEngineMockInstance.game.fen.mockReturnValueOnce('fen-after-e4');
+          return { from: 'e2', to: 'e4', san: 'e4' };
+        }
+        // For opponent's move e5
+        if (move.from === 'e7' && move.to === 'e5') {
+          // Update history to include opponent's move
+          ChessEngineMockInstance.getHistory.mockReturnValueOnce([
+            { from: 'e2', to: 'e4', san: 'e4' },
+            { from: 'e7', to: 'e5', san: 'e5' },
+          ]);
+          ChessEngineMockInstance.game.fen.mockReturnValueOnce(
+            'fen-after-e4-e5',
+          );
+          return { from: 'e7', to: 'e5', san: 'e5' };
+        }
+        return null; // Should not happen in this test
+      });
+    });
+
+    test('should make user move, then auto-reply with opponent move, and return correct details', () => {
+      const userMove = { from: 'e2', to: 'e4' };
+      const result = orchestrator.handleUserMove(userMove);
+
+      expect(result.isValid).toBe(true);
+      expect(result.isVariationComplete).toBe(false);
+      expect(result.nextFen).toBe('fen-after-e4-e5'); // FEN after opponent's move
+      expect(result.opponentMove).toEqual({ move: 'e5', from: 'e7', to: 'e5' }); // Opponent's move details
+
+      // Verify user's move was made
+      expect(ChessEngineMockInstance.makeMove).toHaveBeenCalledWith(userMove);
+      // Verify opponent's move was made
+      expect(ChessEngineMockInstance.makeMove).toHaveBeenCalledWith({
+        from: 'e7',
+        to: 'e5',
+      }); // or just 'e5' if your engine takes SAN
+
+      expect(StatsStoreMock.recordResult).toHaveBeenCalledWith(
+        orchestrator.getCurrentVariationKey(),
+        true,
+      );
+    });
+  });
+
   describe('getVariationPlayCount', () => {
     let orchestrator: any;
     let StatsStoreMock: any;
@@ -949,6 +1036,40 @@ describe('TrainingOrchestrator', () => {
       const count = orchestrator.getVariationPlayCount(key);
       expect(StatsStoreMock.getStats).toHaveBeenCalledWith(key);
       expect(count).toBe(0);
+    });
+  });
+
+  describe('getVariationSuccessRate', () => {
+    let orchestrator: any;
+    let StatsStoreMock: any;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+      StatsStoreMock = { getStats: jest.fn() };
+      orchestrator.statsStore = StatsStoreMock;
+    });
+
+    test('should return the success rate for a given variation key', () => {
+      StatsStoreMock.getStats.mockReturnValue({ attempts: 10, successes: 7 });
+      const key = 'e4_e5_Nf3_Nc6';
+      const rate = orchestrator.getVariationSuccessRate(key);
+      expect(StatsStoreMock.getStats).toHaveBeenCalledWith(key);
+      expect(rate).toBe(0.7);
+    });
+
+    test('should return 0 if attempts are 0 to avoid division by zero', () => {
+      StatsStoreMock.getStats.mockReturnValue({ attempts: 0, successes: 0 });
+      const key = 'd4_d5_c4_e6';
+      const rate = orchestrator.getVariationSuccessRate(key);
+      expect(StatsStoreMock.getStats).toHaveBeenCalledWith(key);
+      expect(rate).toBe(0);
+    });
+
+    test('should return 0 if the variation key is not found in stats', () => {
+      StatsStoreMock.getStats.mockReturnValue({ attempts: 0, successes: 0 }); // Or mock it to return undefined/null if that's the behavior
+      const key = 'non_existent_key';
+      const rate = orchestrator.getVariationSuccessRate(key);
+      expect(StatsStoreMock.getStats).toHaveBeenCalledWith(key);
+      expect(rate).toBe(0);
     });
   });
 });

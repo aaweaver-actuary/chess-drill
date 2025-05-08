@@ -292,4 +292,14 @@ export class TrainingOrchestrator {
     }
     return 0;
   }
+
+  public getVariationSuccessRate(variationKey: string): number {
+    if (this.statsStore && typeof this.statsStore.getStats === 'function') {
+      const stats = this.statsStore.getStats(variationKey);
+      if (stats && stats.attempts > 0) {
+        return stats.successes / stats.attempts;
+      }
+    }
+    return 0;
+  }
 }
