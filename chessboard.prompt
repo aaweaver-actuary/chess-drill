@@ -18,4 +18,4 @@ Additional requirements:
     b. You must not write more of a test than is necessary to make it fail
     c. You may only write enough production code to make the failing test pass 
 
-Please begin work on chess-drill.md. 
+Please begin work on the checklist given in chess-drill.md. All current tests are passing. 

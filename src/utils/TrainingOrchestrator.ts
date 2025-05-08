@@ -67,6 +67,19 @@ export class TrainingOrchestrator {
   }
 
   /**
+   * Selects a random variation from the provided array.
+   * Returns undefined if the array is empty.
+   */
+  public selectRandomVariation(
+    flatVariations: VariationLine[],
+  ): VariationLine | undefined {
+    if (!flatVariations || flatVariations.length === 0) return undefined;
+    if (flatVariations.length === 1) return flatVariations[0];
+    const idx = Math.floor(Math.random() * flatVariations.length);
+    return flatVariations[idx];
+  }
+
+  /**
    * Flattens a parsed PGN structure with nested variations (RAVs) into a list of distinct playable lines.
    *
    * @param pgnData The parsed PGN data to flatten. If null, returns an empty array.

@@ -437,4 +437,36 @@ describe('TrainingOrchestrator', () => {
       );
     });
   });
+
+  describe('selectRandomVariation', () => {
+    let orchestrator: TrainingOrchestrator;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+    });
+
+    test('should return undefined if the input array is empty', () => {
+      const result = orchestrator.selectRandomVariation([]);
+      expect(result).toBeUndefined();
+    });
+
+    test('should return the only variation if array has one element', () => {
+      const variation = { moves: [{ move: 'e4' }], tags: { White: 'User' } };
+      const result = orchestrator.selectRandomVariation([variation]);
+      expect(result).toBe(variation);
+    });
+
+    test('should return a variation from the array (randomly)', () => {
+      const variations = [
+        { moves: [{ move: 'e4' }], tags: { White: 'User' } },
+        { moves: [{ move: 'd4' }], tags: { White: 'User' } },
+        { moves: [{ move: 'c4' }], tags: { White: 'User' } },
+      ];
+      // Mock Math.random to always return 0.5 (middle element)
+      const originalRandom = Math.random;
+      Math.random = () => 0.5;
+      const result = orchestrator.selectRandomVariation(variations);
+      expect(variations).toContain(result);
+      Math.random = originalRandom;
+    });
+  });
 });

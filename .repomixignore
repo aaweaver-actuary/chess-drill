@@ -14,3 +14,4 @@ repomix.config.json/
 repomix-output.xml
 *.svg
 *.prompt
+*.md
