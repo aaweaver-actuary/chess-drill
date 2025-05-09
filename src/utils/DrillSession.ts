@@ -1,12 +1,13 @@
 // src/utils/DrillSession.ts
 import { ChessEngine } from './ChessEngine';
 import { VariationLine, PgnMove } from '@/types/pgnTypes';
+import { DrillStateManager } from './DrillStateManager';
 
 export class DrillSession {
   private chessEngine: ChessEngine;
   private variation: VariationLine;
   private userColor: 'w' | 'b';
-  private currentMoveIndex: number;
+  public stateManager: DrillStateManager; // Exposed for test
 
   constructor(
     variation: VariationLine,
@@ -16,7 +17,7 @@ export class DrillSession {
     this.chessEngine = new ChessEngine();
     this.variation = variation;
     this.userColor = userColor;
-    this.currentMoveIndex = 0;
+    this.stateManager = new DrillStateManager(variation.moves);
 
     if (initialFen) {
       this.chessEngine.load(initialFen);
@@ -32,26 +33,18 @@ export class DrillSession {
   }
 
   public isUserTurn(): boolean {
-    if (this.currentMoveIndex >= this.variation.moves.length) {
+    if (this.stateManager.isComplete()) {
       return false; // Drill is complete
     }
-    const nextMoveInVariation = this.variation.moves[this.currentMoveIndex];
-    // Simplified: PGN moves are 1-indexed for White, Black. Chess.js turn() is 'w' or 'b'.
-    // We need to map the PGN move number/player to the engine's current turn.
-    // This will be more complex depending on how PGN move numbers are handled (e.g. 1. e4 e5 vs 1... e5)
-    // For now, let's assume the variation's moves are sequential and alternate turns.
     const engineTurn = this.chessEngine.game.turn();
     return engineTurn === this.userColor;
   }
 
   public getExpectedMove(): PgnMove | null {
-    if (
-      !this.isUserTurn() ||
-      this.currentMoveIndex >= this.variation.moves.length
-    ) {
+    if (!this.isUserTurn() || this.stateManager.isComplete()) {
       return null;
     }
-    return this.variation.moves[this.currentMoveIndex];
+    return this.stateManager.getExpectedMove();
   }
 
   public handleUserMove(moveInput: {
@@ -90,7 +83,7 @@ export class DrillSession {
     const isCorrect =
       (expectedMove.from === moveInput.from &&
         expectedMove.to === moveInput.to) ||
-      expectedMove.move === this.chessEngine.moveToSan(moveInput); // Requires moveToSan method
+      expectedMove.move === this.chessEngine.moveToSan?.(moveInput); // Requires moveToSan method
 
     if (!isCorrect) {
       return {
@@ -118,11 +111,11 @@ export class DrillSession {
       };
     }
 
-    this.currentMoveIndex++;
+    this.stateManager.advance();
     let opponentMovePlayed: PgnMove | null = null;
 
     // Check if drill is complete after user's move
-    if (this.isDrillComplete()) {
+    if (this.stateManager.isComplete()) {
       return {
         success: true,
         isCorrectMove: true,
@@ -132,8 +125,8 @@ export class DrillSession {
     }
 
     // If not complete, and it's now opponent's turn, play opponent's move
-    if (!this.isUserTurn() && !this.isDrillComplete()) {
-      const opponentPgnMove = this.variation.moves[this.currentMoveIndex];
+    if (!this.isUserTurn() && !this.stateManager.isComplete()) {
+      const opponentPgnMove = this.stateManager.getExpectedMove();
       const opponentMoveForEngine =
         opponentPgnMove.from && opponentPgnMove.to
           ? {
@@ -148,7 +141,7 @@ export class DrillSession {
       );
       if (opponentMoveResult) {
         opponentMovePlayed = opponentPgnMove;
-        this.currentMoveIndex++;
+        this.stateManager.advance();
       } else {
         // This is a critical error: the variation's scripted opponent move is illegal.
         console.error(
@@ -178,7 +171,7 @@ export class DrillSession {
   }
 
   public isDrillComplete(): boolean {
-    return this.currentMoveIndex >= this.variation.moves.length;
+    return this.stateManager.isComplete();
   }
 
   // New getter methods

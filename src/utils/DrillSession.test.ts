@@ -3,9 +3,11 @@ import { DrillSession } from './DrillSession';
 import { ChessEngine } from './ChessEngine';
 import { VariationLine, PgnMove } from '@/types/pgnTypes';
 import { describe, test, expect, jest, beforeEach } from '@jest/globals';
+import { DrillStateManager } from './DrillStateManager';
 
 // Mock ChessEngine
 jest.mock('./ChessEngine');
+jest.mock('./DrillStateManager');
 
 const mockMakeMove = jest.fn();
 const mockLoad = jest.fn();
@@ -79,8 +81,8 @@ describe('DrillSession', () => {
     expect(drill.variation).toEqual(sampleVariation);
     // @ts-ignore // Access private for test
     expect(drill.userColor).toBe('w');
-    // @ts-ignore // Access private for test
-    expect(drill.currentMoveIndex).toBe(0);
+    // Use stateManager for move index
+    expect(drill.stateManager.getCurrentMoveIndex()).toBe(0);
   });
 
   test('constructor should load initialFen if provided', () => {
@@ -89,6 +91,35 @@ describe('DrillSession', () => {
     const drill = new DrillSession(sampleVariation, 'b', fen);
     expect(mockLoad).toHaveBeenCalledWith(fen);
     expect(mockReset).not.toHaveBeenCalled();
+  });
+
+  test('delegates move index and expected move logic to DrillStateManager', () => {
+    const mockAdvance = jest.fn();
+    const mockGetCurrentMoveIndex = jest.fn().mockReturnValue(1);
+    const mockGetExpectedMove = jest
+      .fn()
+      .mockReturnValue({ move: 'e4', from: 'e2', to: 'e4' });
+    (DrillStateManager as jest.Mock).mockImplementation(() => ({
+      advance: mockAdvance,
+      getCurrentMoveIndex: mockGetCurrentMoveIndex,
+      getExpectedMove: mockGetExpectedMove,
+      isComplete: jest.fn().mockReturnValue(false),
+      reset: jest.fn(),
+    }));
+    const sampleVariation = {
+      moves: [{ move: 'e4', from: 'e2', to: 'e4' }],
+      tags: {},
+      startingFEN: undefined,
+    };
+    const drill = new DrillSession(sampleVariation, 'w');
+    // @ts-ignore
+    expect(drill.stateManager.getCurrentMoveIndex()).toBe(1);
+    // @ts-ignore
+    expect(drill.stateManager.getExpectedMove()).toEqual({
+      move: 'e4',
+      from: 'e2',
+      to: 'e4',
+    });
   });
 
   describe('isUserTurn', () => {
@@ -106,8 +137,11 @@ describe('DrillSession', () => {
 
     test('should return false if drill is complete', () => {
       const drill = new DrillSession(sampleVariation, 'w');
-      // @ts-ignore
-      drill.currentMoveIndex = sampleVariation.moves.length; // Manually set to complete
+      // Use stateManager to set index
+      drill.stateManager.reset();
+      for (let i = 0; i < sampleVariation.moves.length; i++) {
+        drill.stateManager.advance();
+      }
       expect(drill.isUserTurn()).toBe(false);
     });
   });
@@ -116,8 +150,7 @@ describe('DrillSession', () => {
     test("should return the correct PgnMove if it is user's turn", () => {
       mockTurn.mockReturnValue('w');
       const drill = new DrillSession(sampleVariation, 'w');
-      // @ts-ignore
-      drill.currentMoveIndex = 0;
+      drill.stateManager.reset();
       expect(drill.getExpectedMove()).toEqual(sampleVariation.moves[0]);
     });
 
@@ -129,8 +162,10 @@ describe('DrillSession', () => {
 
     test('should return null if drill is complete', () => {
       const drill = new DrillSession(sampleVariation, 'w');
-      // @ts-ignore
-      drill.currentMoveIndex = sampleVariation.moves.length;
+      drill.stateManager.reset();
+      for (let i = 0; i < sampleVariation.moves.length; i++) {
+        drill.stateManager.advance();
+      }
       expect(drill.getExpectedMove()).toBeNull();
     });
   });
@@ -154,8 +189,8 @@ describe('DrillSession', () => {
       expect(result.success).toBe(true); // Success is true because the operation of handling the move completed
       expect(result.isCorrectMove).toBe(false);
       expect(mockMakeMove).not.toHaveBeenCalled();
-      // @ts-ignore
-      expect(drill.currentMoveIndex).toBe(0); // Move index should not advance
+      // Use stateManager for move index
+      expect(drill.stateManager.getCurrentMoveIndex()).toBe(0); // Move index should not advance
     });
 
     test('should handle correct user move, make move on engine, and advance index', () => {
@@ -178,8 +213,8 @@ describe('DrillSession', () => {
       expect(result.success).toBe(true);
       expect(result.isCorrectMove).toBe(true);
       expect(mockMakeMove).toHaveBeenCalledWith(userMoveInput); // User's move
-      // @ts-ignore
-      expect(drill.currentMoveIndex).toBe(2); // Advanced past user and opponent move
+      // Use stateManager for move index
+      expect(drill.stateManager.getCurrentMoveIndex()).toBe(2); // Advanced past user and opponent move
       expect(result.newFen).toBe('fen-after-e4-e5');
       expect(result.opponentMove).toEqual(sampleVariation.moves[1]); // e5
       expect(result.isComplete).toBe(false);
@@ -188,8 +223,9 @@ describe('DrillSession', () => {
     test('should handle correct final user move and mark drill as complete', () => {
       mockTurn.mockReturnValue('w'); // User's turn (White)
       const drill = new DrillSession(sampleVariation, 'w');
-      // @ts-ignore // Manually set index to the last user move
-      drill.currentMoveIndex = 2; // User to play Nf3 (sampleVariation.moves[2])
+      // Set index to the last user move
+      drill.stateManager.reset();
+      for (let i = 0; i < 2; i++) drill.stateManager.advance();
 
       const finalUserMove = { from: 'g1', to: 'f3' };
       mockMakeMove.mockReturnValueOnce({ san: 'Nf3', from: 'g1', to: 'f3' });
@@ -207,8 +243,9 @@ describe('DrillSession', () => {
       expect(result.isCorrectMove).toBe(true);
       expect(mockMakeMove).toHaveBeenCalledWith(finalUserMove);
       expect(result.opponentMove).toEqual(sampleVariation.moves[3]); // Nc6
-      // @ts-ignore
-      expect(drill.currentMoveIndex).toBe(sampleVariation.moves.length); // Index is at the end
+      expect(drill.stateManager.getCurrentMoveIndex()).toBe(
+        sampleVariation.moves.length,
+      ); // Index is at the end
       expect(result.isComplete).toBe(true);
       expect(result.newFen).toBe('fen-after-Nf3-Nc6');
     });
@@ -221,8 +258,8 @@ describe('DrillSession', () => {
       mockTurn.mockReturnValue('w');
       const drill = new DrillSession(shortVariation, 'w');
       const userMoveInput = { from: 'e2', to: 'e4' };
-      mockMakeMove.mockReturnValueOnce({ san: 'e4', from: 'e2', to: 'e4' });
-      mockMoveToSan.mockReturnValueOnce('e4');
+      mockMakeMove.mockReturnValueOnce({ san: 'e4', from: 'e2', to: 'e4' }); // Simulate successful engine move
+      mockMoveToSan.mockReturnValueOnce('e4'); // Correct SAN for the move
       mockFen.mockReturnValueOnce('fen-after-final-e4');
 
       const result = drill.handleUserMove(userMoveInput);
@@ -230,8 +267,8 @@ describe('DrillSession', () => {
       expect(result.success).toBe(true);
       expect(result.isCorrectMove).toBe(true);
       expect(mockMakeMove).toHaveBeenCalledWith(userMoveInput);
-      // @ts-ignore
-      expect(drill.currentMoveIndex).toBe(1);
+      // Use stateManager for move index
+      expect(drill.stateManager.getCurrentMoveIndex()).toBe(1);
       expect(result.opponentMove).toBeUndefined();
       expect(result.isComplete).toBe(true);
       expect(result.newFen).toBe('fen-after-final-e4');
@@ -247,8 +284,8 @@ describe('DrillSession', () => {
       const result = drill.handleUserMove(userMoveInput);
       expect(result.success).toBe(false);
       expect(result.isCorrectMove).toBe(false); // If engine fails, it wasn't truly correct/legal in that context
-      // @ts-ignore
-      expect(drill.currentMoveIndex).toBe(0); // Index should not advance
+      // Use stateManager for move index
+      expect(drill.stateManager.getCurrentMoveIndex()).toBe(0); // Index should not advance
     });
 
     test("should handle scenario where opponent's scripted move is illegal", () => {
@@ -271,8 +308,8 @@ describe('DrillSession', () => {
       expect(result.success).toBe(true); // User's part was successful
       expect(result.isCorrectMove).toBe(true);
       expect(result.opponentMove).toBeNull(); // Opponent move was not made
-      // @ts-ignore
-      expect(drill.currentMoveIndex).toBe(1); // Only user's move advanced index
+      // Use stateManager for move index
+      expect(drill.stateManager.getCurrentMoveIndex()).toBe(1); // Only user's move advanced index
       expect(result.newFen).toBe('fen-after-e4'); // FEN after user's move only
       expect(result.isComplete).toBe(false); // Drill is not complete as opponent move failed
       expect(consoleErrorSpy).toHaveBeenCalled();
@@ -283,22 +320,25 @@ describe('DrillSession', () => {
   describe('isDrillComplete', () => {
     test('should return false if currentMoveIndex is less than total moves', () => {
       const drill = new DrillSession(sampleVariation, 'w');
-      // @ts-ignore
-      drill.currentMoveIndex = 0;
+      drill.stateManager.reset();
       expect(drill.isDrillComplete()).toBe(false);
     });
 
     test('should return true if currentMoveIndex equals total moves', () => {
       const drill = new DrillSession(sampleVariation, 'w');
-      // @ts-ignore
-      drill.currentMoveIndex = sampleVariation.moves.length;
+      drill.stateManager.reset();
+      for (let i = 0; i < sampleVariation.moves.length; i++) {
+        drill.stateManager.advance();
+      }
       expect(drill.isDrillComplete()).toBe(true);
     });
 
     test('should return true if currentMoveIndex exceeds total moves (safety check)', () => {
       const drill = new DrillSession(sampleVariation, 'w');
-      // @ts-ignore
-      drill.currentMoveIndex = sampleVariation.moves.length + 1;
+      drill.stateManager.reset();
+      for (let i = 0; i < sampleVariation.moves.length + 1; i++) {
+        drill.stateManager.advance();
+      }
       expect(drill.isDrillComplete()).toBe(true);
     });
   });

@@ -306,3 +306,50 @@ This checklist emphasizes strict TDD: (a) No production code without a failing t
 ---
 
 This detailed checklist will guide the development process, ensuring that TDD principles are followed strictly. Each step involves writing a failing test first, then the minimal code to pass it, followed by refactoring if necessary.
+
+## Current State
+
+- **PGN Parsing & Variation Handling**
+    - [x] `flattenVariations(parsedPgn)`: Flattens nested PGN variations into a list of playable lines.
+    - [x] `selectRandomVariation()`: Randomly selects a variation from the flattened list.
+    - [x] `getCurrentVariation()`: Returns the currently selected variation.
+    - [x] `getCurrentVariationKey()`: Returns a unique key for the current variation.
+    - [x] `determineUserColor(variation)`: Determines if the user plays White or Black based on the first move.
+    - [x] All above logic is implemented and tested in utils and types.
+
+- **TrainingOrchestrator & DrillSession**
+    - [x] `startTrainingSession(userPlaysAs?)`: Loads a random variation, determines user color, and initializes game state.
+    - [x] Handles error cases (no PGN, no variations, etc.).
+    - [x] DrillSession manages move validation, user/opponent turns, and drill completion.
+    - [x] Comprehensive unit tests for all core logic.
+    - [ ] TODO: Auto-advance to user turn if session starts on opponent's move.
+    - [ ] TODO: Handle non-standard FENs and partial variations robustly.
+
+- **UI Components**
+    - [x] `PGNUploader`: Uploads PGN files and passes content to parent.
+    - [x] `ChessBoard`: Displays board and allows moves (not yet connected to drill logic).
+    - [ ] No integration yet between UI and backend drill logic.
+
+## Next Steps
+
+1. **Integrate Backend Logic with UI**
+    - [ ] Connect PGN upload to `TrainingOrchestrator.loadPgn` and start a training session.
+    - [ ] Display a random variation and allow the user to play through the drill interactively.
+    - [ ] Show feedback for correct/incorrect moves and drill completion.
+    - [ ] Display stats (attempts/successes) for each variation.
+
+2. **Auto-Advance Logic**
+    - [ ] When a session starts, auto-play opponent moves until it is the user's turn.
+    - [ ] Ensure DrillSession/TrainingOrchestrator handle non-standard FENs and partial variations.
+
+3. **UI/UX Improvements**
+    - [ ] Add ability to select or replay variations.
+    - [ ] Show move history and current FEN.
+    - [ ] Add error handling and user messages for invalid PGNs or moves.
+
+4. **Testing & Polish**
+    - [ ] Extend test coverage as new features are added.
+    - [ ] Refactor and clean up code as needed for maintainability.
+
+---
+This plan reflects the current codebase and outlines the next priorities for a functional ChessDrill MVP.
