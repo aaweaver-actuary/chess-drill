@@ -6,7 +6,7 @@ You have been approached to help get this next.js app off the ground.
 
 The app is intended to have the same goals as are outlined in the com-chess.md file provided. Instead of implementing as an iOS app, your goal is to implement the same ideas in a react/next.js app.
 
-You need to create a file chess-drill.md that:
+You are given a file chess-drill.md that:
 1. Provides a general overview of the project and the goals for end-state
 2. Describes the current state of the project in some detail
 3. Proposes changes to the current state as well as a roadmap for building out the MVP
@@ -18,4 +18,6 @@ Additional requirements:
     b. You must not write more of a test than is necessary to make it fail
     c. You may only write enough production code to make the failing test pass 
 
-Please begin work on the checklist given in chess-drill.md. All current tests are passing. 
+You have been brought in to help put this project back on track. There is concern that the classes are getting too large, and you need to explore avenues for breaking them up. 
+
+The chess-drill.md file outlines the goals of the project and the current state of the project. You need to read through the file and come up with a strategy for making the project more modular and maintainable. 

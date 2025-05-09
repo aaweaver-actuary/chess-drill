@@ -56,9 +56,14 @@ src/
     ChessPieceColor.ts
     ChessSquare.ts
   types/
+    pgnTypes.ts
     StatsStore.d.ts
   utils/
     ChessEngine.ts
+    DrillSession.test.ts
+    DrillSession.ts
+    PgnDataManager.test.ts
+    PgnDataManager.ts
     sanToSquare.test.ts
     sanToSquare.ts
     Scheduler.ts
@@ -78,6 +83,1075 @@ tsconfig.json
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="src/types/pgnTypes.ts">
+// src/types/pgnTypes.ts
+
+// Define a type for parsed PGN moves, including recursive RAVs
+export interface PgnMove {
+  move: string; // SAN string for the move
+  from?: string; // Starting square, e.g., 'e2'
+  to?: string; // Ending square, e.g., 'e4'
+  promotion?: 'q' | 'r' | 'b' | 'n'; // Promotion piece
+  comment?: string;
+  nag?: string[];
+  rav?: PgnRav[];
+  [key: string]: any; // For other potential properties from parser
+}
+
+export interface PgnRav {
+  moves: PgnMove[];
+}
+
+// The overall structure of parsed PGN data
+export interface ParsedPgn {
+  moves: PgnMove[];
+  tags?: Record<string, string>;
+  result?: string;
+  startingFEN?: string;
+  // Other properties that might be present in parsed PGN
+}
+
+// Structure for flattened variation lines
+export interface VariationLine {
+  moves: PgnMove[]; // Without 'rav' properties
+  tags?: Record<string, string>; // Tags from the original PGN
+  startingFEN?: string;
+}
+
+// Interface for the objects expected in the array passed to generateVariationKey
+export interface MoveForVariationKey {
+  move: string;
+  // Allow other properties to exist on the object, but they won't be used for the key.
+  [key: string]: any;
+}
+</file>
+
+<file path="src/utils/DrillSession.test.ts">
+// src/utils/DrillSession.test.ts
+import { DrillSession } from './DrillSession';
+import { ChessEngine } from './ChessEngine';
+import { VariationLine, PgnMove } from '@/types/pgnTypes';
+import { describe, test, expect, jest, beforeEach } from '@jest/globals';
+
+// Mock ChessEngine
+jest.mock('./ChessEngine');
+
+const mockMakeMove = jest.fn();
+const mockLoad = jest.fn();
+const mockReset = jest.fn();
+const mockFen = jest
+  .fn()
+  .mockReturnValue('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'); // Default FEN
+const mockTurn = jest.fn().mockReturnValue('w'); // Default turn
+const mockMoveToSan = jest
+  .fn()
+  .mockImplementation((move) => `${move.from}-${move.to}`);
+
+// Helper to create a mock ChessEngine instance
+const createMockChessEngineInstance = () => ({
+  makeMove: mockMakeMove,
+  load: mockLoad,
+  reset: mockReset,
+  game: {
+    fen: mockFen,
+    turn: mockTurn,
+  },
+  moveToSan: mockMoveToSan, // Add the mock for moveToSan
+});
+
+describe('DrillSession', () => {
+  let mockChessEngineInstance: jest.Mocked<ChessEngine>;
+  let sampleVariation: VariationLine;
+
+  beforeEach(() => {
+    // Reset all mock implementations and calls
+    mockMakeMove.mockClear();
+    mockLoad.mockClear();
+    mockReset.mockClear();
+    mockFen
+      .mockClear()
+      .mockReturnValue(
+        'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      );
+    mockTurn.mockClear().mockReturnValue('w');
+    mockMoveToSan
+      .mockClear()
+      .mockImplementation((move) => `${move.from}-${move.to}`);
+
+    // Create a fresh mock instance for each test
+    mockChessEngineInstance =
+      createMockChessEngineInstance() as jest.Mocked<ChessEngine>;
+    (ChessEngine as jest.MockedClass<typeof ChessEngine>).mockImplementation(
+      () => mockChessEngineInstance,
+    );
+
+    sampleVariation = {
+      moves: [
+        { move: 'e4', from: 'e2', to: 'e4' }, // User (White)
+        { move: 'e5', from: 'e7', to: 'e5' }, // Opponent (Black)
+        { move: 'Nf3', from: 'g1', to: 'f3' }, // User (White)
+        { move: 'Nc6', from: 'b8', to: 'c6' }, // Opponent (Black)
+      ],
+      tags: { Event: 'Test Drill' },
+      startingFEN: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', // Standard start
+    };
+  });
+
+  test('constructor should initialize ChessEngine and properties', () => {
+    const drill = new DrillSession(sampleVariation, 'w');
+    expect(ChessEngine).toHaveBeenCalledTimes(1);
+    expect(mockReset).toHaveBeenCalled(); // Default FEN means reset is called
+    expect(drill.getCurrentFen()).toBe(
+      'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+    );
+    // @ts-ignore // Access private for test
+    expect(drill.variation).toEqual(sampleVariation);
+    // @ts-ignore // Access private for test
+    expect(drill.userColor).toBe('w');
+    // @ts-ignore // Access private for test
+    expect(drill.currentMoveIndex).toBe(0);
+  });
+
+  test('constructor should load initialFen if provided', () => {
+    const fen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1'; // After 1. e4
+    sampleVariation.startingFEN = fen;
+    const drill = new DrillSession(sampleVariation, 'b', fen);
+    expect(mockLoad).toHaveBeenCalledWith(fen);
+    expect(mockReset).not.toHaveBeenCalled();
+  });
+
+  describe('isUserTurn', () => {
+    test("should return true if it is the user's turn", () => {
+      mockTurn.mockReturnValue('w');
+      const drill = new DrillSession(sampleVariation, 'w');
+      expect(drill.isUserTurn()).toBe(true);
+    });
+
+    test("should return false if it is not the user's turn", () => {
+      mockTurn.mockReturnValue('b');
+      const drill = new DrillSession(sampleVariation, 'w');
+      expect(drill.isUserTurn()).toBe(false);
+    });
+
+    test('should return false if drill is complete', () => {
+      const drill = new DrillSession(sampleVariation, 'w');
+      // @ts-ignore
+      drill.currentMoveIndex = sampleVariation.moves.length; // Manually set to complete
+      expect(drill.isUserTurn()).toBe(false);
+    });
+  });
+
+  describe('getExpectedMove', () => {
+    test("should return the correct PgnMove if it is user's turn", () => {
+      mockTurn.mockReturnValue('w');
+      const drill = new DrillSession(sampleVariation, 'w');
+      // @ts-ignore
+      drill.currentMoveIndex = 0;
+      expect(drill.getExpectedMove()).toEqual(sampleVariation.moves[0]);
+    });
+
+    test("should return null if not user's turn", () => {
+      mockTurn.mockReturnValue('b');
+      const drill = new DrillSession(sampleVariation, 'w');
+      expect(drill.getExpectedMove()).toBeNull();
+    });
+
+    test('should return null if drill is complete', () => {
+      const drill = new DrillSession(sampleVariation, 'w');
+      // @ts-ignore
+      drill.currentMoveIndex = sampleVariation.moves.length;
+      expect(drill.getExpectedMove()).toBeNull();
+    });
+  });
+
+  describe('handleUserMove', () => {
+    test("should return not success if not user's turn", () => {
+      mockTurn.mockReturnValue('b'); // Opponent's turn
+      const drill = new DrillSession(sampleVariation, 'w');
+      const result = drill.handleUserMove({ from: 'e2', to: 'e4' });
+      expect(result.success).toBe(false);
+      expect(result.isCorrectMove).toBe(false);
+      expect(mockMakeMove).not.toHaveBeenCalled();
+    });
+
+    test('should return isCorrectMove: false for an incorrect move', () => {
+      mockTurn.mockReturnValue('w'); // User's turn
+      const drill = new DrillSession(sampleVariation, 'w');
+      // Expected is e4 (e2-e4), user plays d4 (d2-d4)
+      mockMoveToSan.mockReturnValueOnce('d2-d4'); // Mock SAN for the incorrect move
+      const result = drill.handleUserMove({ from: 'd2', to: 'd4' });
+      expect(result.success).toBe(true); // Success is true because the operation of handling the move completed
+      expect(result.isCorrectMove).toBe(false);
+      expect(mockMakeMove).not.toHaveBeenCalled();
+      // @ts-ignore
+      expect(drill.currentMoveIndex).toBe(0); // Move index should not advance
+    });
+
+    test('should handle correct user move, make move on engine, and advance index', () => {
+      mockTurn.mockReturnValue('w'); // User's turn (White)
+      const drill = new DrillSession(sampleVariation, 'w');
+      const userMoveInput = { from: 'e2', to: 'e4' };
+      mockMakeMove.mockReturnValueOnce({ san: 'e4', from: 'e2', to: 'e4' }); // Simulate successful engine move
+      mockMoveToSan.mockReturnValueOnce('e4'); // Correct SAN for the move
+      mockFen.mockReturnValueOnce('fen-after-e4'); // FEN after user's move
+
+      // Simulate opponent's turn after user's move for the next part of the logic
+      mockTurn.mockReturnValueOnce('b');
+      // Simulate opponent's move being made
+      mockMakeMove.mockReturnValueOnce({ san: 'e5', from: 'e7', to: 'e5' });
+      mockFen.mockReturnValueOnce('fen-after-e4-e5'); // FEN after opponent's move
+      mockTurn.mockReturnValueOnce('w'); // Back to user's turn
+
+      const result = drill.handleUserMove(userMoveInput);
+
+      expect(result.success).toBe(true);
+      expect(result.isCorrectMove).toBe(true);
+      expect(mockMakeMove).toHaveBeenCalledWith(userMoveInput); // User's move
+      // @ts-ignore
+      expect(drill.currentMoveIndex).toBe(2); // Advanced past user and opponent move
+      expect(result.newFen).toBe('fen-after-e4-e5');
+      expect(result.opponentMove).toEqual(sampleVariation.moves[1]); // e5
+      expect(result.isComplete).toBe(false);
+    });
+
+    test('should handle correct final user move and mark drill as complete', () => {
+      mockTurn.mockReturnValue('w'); // User's turn (White)
+      const drill = new DrillSession(sampleVariation, 'w');
+      // @ts-ignore // Manually set index to the last user move
+      drill.currentMoveIndex = 2; // User to play Nf3 (sampleVariation.moves[2])
+
+      const finalUserMove = { from: 'g1', to: 'f3' };
+      mockMakeMove.mockReturnValueOnce({ san: 'Nf3', from: 'g1', to: 'f3' });
+      mockMoveToSan.mockReturnValueOnce('Nf3');
+      mockFen.mockReturnValueOnce('fen-after-Nf3');
+      mockTurn.mockReturnValueOnce('b'); // Opponent's turn after user's move
+
+      // Opponent makes their final move
+      mockMakeMove.mockReturnValueOnce({ san: 'Nc6', from: 'b8', to: 'c6' });
+      mockFen.mockReturnValueOnce('fen-after-Nf3-Nc6');
+
+      const result = drill.handleUserMove(finalUserMove);
+
+      expect(result.success).toBe(true);
+      expect(result.isCorrectMove).toBe(true);
+      expect(mockMakeMove).toHaveBeenCalledWith(finalUserMove);
+      expect(result.opponentMove).toEqual(sampleVariation.moves[3]); // Nc6
+      // @ts-ignore
+      expect(drill.currentMoveIndex).toBe(sampleVariation.moves.length); // Index is at the end
+      expect(result.isComplete).toBe(true);
+      expect(result.newFen).toBe('fen-after-Nf3-Nc6');
+    });
+
+    test('should handle correct user move when it is the last move of the variation (no opponent reply)', () => {
+      const shortVariation: VariationLine = {
+        moves: [{ move: 'e4', from: 'e2', to: 'e4' }], // Only one move
+        startingFEN: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      };
+      mockTurn.mockReturnValue('w');
+      const drill = new DrillSession(shortVariation, 'w');
+      const userMoveInput = { from: 'e2', to: 'e4' };
+      mockMakeMove.mockReturnValueOnce({ san: 'e4', from: 'e2', to: 'e4' });
+      mockMoveToSan.mockReturnValueOnce('e4');
+      mockFen.mockReturnValueOnce('fen-after-final-e4');
+
+      const result = drill.handleUserMove(userMoveInput);
+
+      expect(result.success).toBe(true);
+      expect(result.isCorrectMove).toBe(true);
+      expect(mockMakeMove).toHaveBeenCalledWith(userMoveInput);
+      // @ts-ignore
+      expect(drill.currentMoveIndex).toBe(1);
+      expect(result.opponentMove).toBeUndefined();
+      expect(result.isComplete).toBe(true);
+      expect(result.newFen).toBe('fen-after-final-e4');
+    });
+
+    test('should return success:false if engine fails to make a supposedly correct move', () => {
+      mockTurn.mockReturnValue('w');
+      const drill = new DrillSession(sampleVariation, 'w');
+      const userMoveInput = { from: 'e2', to: 'e4' };
+      mockMakeMove.mockReturnValueOnce(null); // Simulate engine failure
+      mockMoveToSan.mockReturnValueOnce('e4');
+
+      const result = drill.handleUserMove(userMoveInput);
+      expect(result.success).toBe(false);
+      expect(result.isCorrectMove).toBe(false); // If engine fails, it wasn't truly correct/legal in that context
+      // @ts-ignore
+      expect(drill.currentMoveIndex).toBe(0); // Index should not advance
+    });
+
+    test("should handle scenario where opponent's scripted move is illegal", () => {
+      mockTurn.mockReturnValue('w'); // User's turn
+      const drill = new DrillSession(sampleVariation, 'w');
+      const userMoveInput = { from: 'e2', to: 'e4' };
+      mockMakeMove.mockReturnValueOnce({ san: 'e4', from: 'e2', to: 'e4' }); // User move OK
+      mockMoveToSan.mockReturnValueOnce('e4');
+      mockFen.mockReturnValueOnce('fen-after-e4');
+      mockTurn.mockReturnValueOnce('b'); // Opponent's turn
+
+      // Simulate opponent's move failing
+      mockMakeMove.mockReturnValueOnce(null);
+      const consoleErrorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
+      const result = drill.handleUserMove(userMoveInput);
+
+      expect(result.success).toBe(true); // User's part was successful
+      expect(result.isCorrectMove).toBe(true);
+      expect(result.opponentMove).toBeNull(); // Opponent move was not made
+      // @ts-ignore
+      expect(drill.currentMoveIndex).toBe(1); // Only user's move advanced index
+      expect(result.newFen).toBe('fen-after-e4'); // FEN after user's move only
+      expect(result.isComplete).toBe(false); // Drill is not complete as opponent move failed
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      consoleErrorSpy.mockRestore();
+    });
+  });
+
+  describe('isDrillComplete', () => {
+    test('should return false if currentMoveIndex is less than total moves', () => {
+      const drill = new DrillSession(sampleVariation, 'w');
+      // @ts-ignore
+      drill.currentMoveIndex = 0;
+      expect(drill.isDrillComplete()).toBe(false);
+    });
+
+    test('should return true if currentMoveIndex equals total moves', () => {
+      const drill = new DrillSession(sampleVariation, 'w');
+      // @ts-ignore
+      drill.currentMoveIndex = sampleVariation.moves.length;
+      expect(drill.isDrillComplete()).toBe(true);
+    });
+
+    test('should return true if currentMoveIndex exceeds total moves (safety check)', () => {
+      const drill = new DrillSession(sampleVariation, 'w');
+      // @ts-ignore
+      drill.currentMoveIndex = sampleVariation.moves.length + 1;
+      expect(drill.isDrillComplete()).toBe(true);
+    });
+  });
+});
+</file>
+
+<file path="src/utils/DrillSession.ts">
+// src/utils/DrillSession.ts
+import { ChessEngine } from './ChessEngine';
+import { VariationLine, PgnMove } from '@/types/pgnTypes';
+
+export class DrillSession {
+  private chessEngine: ChessEngine;
+  private variation: VariationLine;
+  private userColor: 'w' | 'b';
+  private currentMoveIndex: number;
+
+  constructor(
+    variation: VariationLine,
+    userColor: 'w' | 'b',
+    initialFen?: string,
+  ) {
+    this.chessEngine = new ChessEngine();
+    this.variation = variation;
+    this.userColor = userColor;
+    this.currentMoveIndex = 0;
+
+    if (initialFen) {
+      this.chessEngine.load(initialFen);
+    } else {
+      this.chessEngine.reset(); // Start from the standard initial position if no FEN is provided
+    }
+    // TODO: Advance to the actual starting position of the drill if the variation doesn't start from move 1
+    // TODO: Auto-play opponent moves if it's not the user's turn initially
+  }
+
+  public getCurrentFen(): string {
+    return this.chessEngine.game.fen();
+  }
+
+  public isUserTurn(): boolean {
+    if (this.currentMoveIndex >= this.variation.moves.length) {
+      return false; // Drill is complete
+    }
+    const nextMoveInVariation = this.variation.moves[this.currentMoveIndex];
+    // Simplified: PGN moves are 1-indexed for White, Black. Chess.js turn() is 'w' or 'b'.
+    // We need to map the PGN move number/player to the engine's current turn.
+    // This will be more complex depending on how PGN move numbers are handled (e.g. 1. e4 e5 vs 1... e5)
+    // For now, let's assume the variation's moves are sequential and alternate turns.
+    const engineTurn = this.chessEngine.game.turn();
+    return engineTurn === this.userColor;
+  }
+
+  public getExpectedMove(): PgnMove | null {
+    if (
+      !this.isUserTurn() ||
+      this.currentMoveIndex >= this.variation.moves.length
+    ) {
+      return null;
+    }
+    return this.variation.moves[this.currentMoveIndex];
+  }
+
+  public handleUserMove(moveInput: {
+    from: string;
+    to: string;
+    promotion?: string;
+  }): {
+    success: boolean;
+    isCorrectMove: boolean;
+    newFen: string;
+    opponentMove?: PgnMove | null;
+    isComplete: boolean;
+  } {
+    if (!this.isUserTurn()) {
+      // This should ideally be prevented by UI or higher-level logic
+      return {
+        success: false,
+        isCorrectMove: false,
+        newFen: this.getCurrentFen(),
+        isComplete: this.isDrillComplete(),
+      };
+    }
+
+    const expectedMove = this.getExpectedMove();
+    if (!expectedMove) {
+      // Should not happen if isUserTurn is true and drill not complete
+      return {
+        success: false,
+        isCorrectMove: false,
+        newFen: this.getCurrentFen(),
+        isComplete: this.isDrillComplete(),
+      };
+    }
+
+    // TODO: More robust SAN comparison or from/to comparison
+    const isCorrect =
+      (expectedMove.from === moveInput.from &&
+        expectedMove.to === moveInput.to) ||
+      expectedMove.move === this.chessEngine.moveToSan(moveInput); // Requires moveToSan method
+
+    if (!isCorrect) {
+      return {
+        success: true,
+        isCorrectMove: false,
+        newFen: this.getCurrentFen(),
+        isComplete: false,
+      };
+    }
+
+    const moveResult = this.chessEngine.makeMove(moveInput);
+    if (!moveResult) {
+      // This implies an illegal move despite our check, or an engine issue.
+      // This could happen if the `isCorrect` check above is not perfectly aligned with engine's legality.
+      console.error(
+        'DrillSession: Engine rejected a move that was deemed correct.',
+        moveInput,
+        expectedMove,
+      );
+      return {
+        success: false,
+        isCorrectMove: false,
+        newFen: this.getCurrentFen(),
+        isComplete: this.isDrillComplete(),
+      };
+    }
+
+    this.currentMoveIndex++;
+    let opponentMovePlayed: PgnMove | null = null;
+
+    // Check if drill is complete after user's move
+    if (this.isDrillComplete()) {
+      return {
+        success: true,
+        isCorrectMove: true,
+        newFen: this.getCurrentFen(),
+        isComplete: true,
+      };
+    }
+
+    // If not complete, and it's now opponent's turn, play opponent's move
+    if (!this.isUserTurn() && !this.isDrillComplete()) {
+      const opponentPgnMove = this.variation.moves[this.currentMoveIndex];
+      const opponentMoveForEngine =
+        opponentPgnMove.from && opponentPgnMove.to
+          ? {
+              from: opponentPgnMove.from,
+              to: opponentPgnMove.to,
+              promotion: opponentPgnMove.promotion,
+            }
+          : opponentPgnMove.move;
+
+      const opponentMoveResult = this.chessEngine.makeMove(
+        opponentMoveForEngine,
+      );
+      if (opponentMoveResult) {
+        opponentMovePlayed = opponentPgnMove;
+        this.currentMoveIndex++;
+      } else {
+        // This is a critical error: the variation's scripted opponent move is illegal.
+        console.error(
+          "CRITICAL: Opponent's move from variation is illegal.",
+          opponentPgnMove,
+          this.getCurrentFen(),
+        );
+        // The drill might be considered stuck or ended here due to bad PGN data.
+        // For now, we'll return the state after the user's successful move.
+        return {
+          success: true,
+          isCorrectMove: true,
+          newFen: this.chessEngine.game.fen(),
+          opponentMove: null,
+          isComplete: this.isDrillComplete(),
+        };
+      }
+    }
+
+    return {
+      success: true,
+      isCorrectMove: true,
+      newFen: this.getCurrentFen(),
+      opponentMove: opponentMovePlayed,
+      isComplete: this.isDrillComplete(),
+    };
+  }
+
+  public isDrillComplete(): boolean {
+    return this.currentMoveIndex >= this.variation.moves.length;
+  }
+
+  // New getter methods
+  public getVariation(): VariationLine {
+    return this.variation;
+  }
+
+  public getUserColor(): 'w' | 'b' {
+    return this.userColor;
+  }
+
+  // Placeholder for a method that might be needed in ChessEngine or here
+  // This is a simplification; chess.js's move function returns a move object that includes SAN
+  private _moveToSan(moveInput: {
+    from: string;
+    to: string;
+    promotion?: string;
+  }): string | null {
+    // This would require chess.js instance to try the move and get its SAN string.
+    // const tempGame = new Chess(this.chessEngine.game.fen());
+    // const moveResult = tempGame.move(moveInput);
+    // return moveResult ? moveResult.san : null;
+    return `${moveInput.from}-${moveInput.to}`; // Simplified placeholder
+  }
+}
+</file>
+
+<file path="src/utils/PgnDataManager.test.ts">
+// src/utils/PgnDataManager.test.ts
+import { PgnDataManager } from './PgnDataManager';
+import { VariationParser } from './VariationParser';
+import {
+  ParsedPgn,
+  PgnMove,
+  PgnRav,
+  VariationLine,
+  MoveForVariationKey,
+} from '@/types/pgnTypes';
+import { describe, test, expect, jest, beforeEach } from '@jest/globals';
+
+// Mock VariationParser
+jest.mock('./VariationParser');
+
+const mockParse = jest.fn<(pgnString: string) => ParsedPgn | null>();
+
+describe('PgnDataManager', () => {
+  let pgnDataManager: PgnDataManager;
+  let MockVariationParser: jest.MockedClass<typeof VariationParser>;
+
+  beforeEach(() => {
+    // Clear all instances and calls to constructor and all methods:
+    // MockVariationParser.mockClear(); // This is for the class
+    mockParse.mockClear(); // This is for the instance method
+    VariationParser.prototype.parse = mockParse;
+    pgnDataManager = new PgnDataManager();
+  });
+
+  test('constructor(): should be able to instantiate', () => {
+    expect(pgnDataManager).toBeInstanceOf(PgnDataManager);
+  });
+
+  describe('loadPgn', () => {
+    test('should do nothing if PGN string is empty', () => {
+      pgnDataManager.loadPgn('');
+      expect(mockParse).not.toHaveBeenCalled();
+      expect(pgnDataManager.getParsedPgn()).toBeNull();
+    });
+
+    test('should parse a simple PGN string and store parsed data', () => {
+      const pgn = '1. e4 e5';
+      const parsed: ParsedPgn = { moves: [{ move: 'e4' }, { move: 'e5' }] };
+      mockParse.mockReturnValue(parsed);
+      pgnDataManager.loadPgn(pgn);
+      expect(mockParse).toHaveBeenCalledWith(pgn);
+      expect(pgnDataManager.getParsedPgn()).toEqual(parsed);
+    });
+
+    test('should parse PGN with comments and NAGs', () => {
+      const pgn = '1. e4 {comment} e5 $1';
+      const parsed: ParsedPgn = {
+        moves: [
+          { move: 'e4', comment: 'comment' },
+          { move: 'e5', nag: ['$1'] },
+        ],
+      };
+      mockParse.mockReturnValue(parsed);
+      pgnDataManager.loadPgn(pgn);
+      expect(pgnDataManager.getParsedPgn()).toEqual(parsed);
+    });
+
+    test('should parse PGN with nested variations', () => {
+      const pgn = '1. e4 (1... d5) e5';
+      const parsed: ParsedPgn = {
+        moves: [
+          { move: 'e4', rav: [{ moves: [{ move: 'd5' }] }] },
+          { move: 'e5' },
+        ],
+      };
+      mockParse.mockReturnValue(parsed);
+      pgnDataManager.loadPgn(pgn);
+      expect(pgnDataManager.getParsedPgn()).toEqual(parsed);
+    });
+  });
+
+  describe('hasPgnLoaded', () => {
+    test('should return false if PGN not loaded', () => {
+      expect(pgnDataManager.hasPgnLoaded()).toBe(false);
+    });
+
+    test('should return true if PGN is loaded', () => {
+      const parsed: ParsedPgn = { moves: [{ move: 'e4' }] };
+      mockParse.mockReturnValue(parsed);
+      pgnDataManager.loadPgn('1. e4');
+      expect(pgnDataManager.hasPgnLoaded()).toBe(true);
+    });
+  });
+
+  describe('generateVariationKey', () => {
+    test('should return empty string for empty moves array', () => {
+      expect(pgnDataManager.generateVariationKey([])).toBe('');
+    });
+
+    test('should generate a key by joining SAN moves with underscore', () => {
+      const moves: MoveForVariationKey[] = [
+        { move: 'e4' },
+        { move: 'e5' },
+        { move: 'Nf3' },
+      ];
+      expect(pgnDataManager.generateVariationKey(moves)).toBe('e4_e5_Nf3');
+    });
+
+    test('should ignore other properties on move objects', () => {
+      const moves: MoveForVariationKey[] = [
+        { move: 'e4', from: 'e2', to: 'e4' },
+        { move: 'e5' },
+      ];
+      expect(pgnDataManager.generateVariationKey(moves)).toBe('e4_e5');
+    });
+  });
+
+  describe('flattenVariations', () => {
+    test('should return empty array if no PGN data or moves', () => {
+      expect(pgnDataManager.flattenVariations(null)).toEqual([]);
+      expect(pgnDataManager.flattenVariations({ moves: [] })).toEqual([]);
+    });
+
+    test('should flatten a PGN with no variations (main line only)', () => {
+      const pgnData: ParsedPgn = {
+        moves: [{ move: 'e4' }, { move: 'e5' }, { move: 'Nf3' }],
+        tags: { White: 'Player1', Black: 'Player2' },
+      };
+      const expected: VariationLine[] = [
+        {
+          moves: [{ move: 'e4' }, { move: 'e5' }, { move: 'Nf3' }],
+          tags: { White: 'Player1', Black: 'Player2' },
+          startingFEN: undefined,
+        },
+      ];
+      expect(pgnDataManager.flattenVariations(pgnData)).toEqual(expected);
+    });
+
+    test('should use startingFEN from PGN tags if available', () => {
+      const fen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
+      const pgnData: ParsedPgn = {
+        moves: [{ move: 'e5' }],
+        tags: { FEN: fen, White: 'Player1' },
+      };
+      const expected: VariationLine[] = [
+        {
+          moves: [{ move: 'e5' }],
+          tags: { FEN: fen, White: 'Player1' },
+          startingFEN: fen,
+        },
+      ];
+      expect(pgnDataManager.flattenVariations(pgnData)).toEqual(expected);
+    });
+
+    test('should use startingFEN from pgnData.startingFEN if tags.FEN is not available', () => {
+      const fen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
+      const pgnData: ParsedPgn = {
+        moves: [{ move: 'e5' }],
+        startingFEN: fen,
+        tags: { White: 'Player1' },
+      };
+      const expected: VariationLine[] = [
+        {
+          moves: [{ move: 'e5' }],
+          tags: { White: 'Player1' },
+          startingFEN: fen,
+        },
+      ];
+      expect(pgnDataManager.flattenVariations(pgnData)).toEqual(expected);
+    });
+
+    test('should correctly flatten a PGN with one simple variation (RAV)', () => {
+      const pgnData: ParsedPgn = {
+        moves: [
+          { move: 'e4' }, // Main move 1
+          {
+            move: 'e5', // Main move 2
+            rav: [
+              // Variation from e5
+              { moves: [{ move: 'c5' }, { move: 'Nf3' }] }, // Variation line: e4, c5, Nf3
+            ],
+          },
+          { move: 'Nf3' }, // Main move 3 (after e5). Forms line: e4, e5, Nf3
+        ],
+      };
+      const result = pgnDataManager.flattenVariations(pgnData);
+      expect(result).toHaveLength(2);
+      // Expected line 1: e4, e5, Nf3
+      expect(result).toContainEqual({
+        moves: [{ move: 'e4' }, { move: 'e5' }, { move: 'Nf3' }],
+        tags: undefined,
+        startingFEN: undefined,
+      });
+      // Expected line 2: e4, c5, Nf3
+      expect(result).toContainEqual({
+        moves: [{ move: 'e4' }, { move: 'c5' }, { move: 'Nf3' }],
+        tags: undefined,
+        startingFEN: undefined,
+      });
+    });
+
+    test('should correctly flatten PGN with nested RAVs', () => {
+      const pgnData: ParsedPgn = {
+        moves: [
+          { move: 'e4' }, // M1
+          {
+            // M2
+            move: 'e5',
+            rav: [
+              // V2a (from e5)
+              {
+                moves: [
+                  { move: 'c5' }, // V2a.1
+                  {
+                    // V2a.2
+                    move: 'Nf3',
+                    rav: [
+                      // V2a.2.i (from Nf3 in V2a)
+                      { moves: [{ move: 'd6' }, { move: 'd4' }] }, // V2a.2.i.1, V2a.2.i.2 -> e4, c5, Nf3, d6, d4
+                    ],
+                  },
+                  { move: 'Nc6' }, // V2a.3 (after Nf3 in V2a) -> e4, c5, Nf3, Nc6
+                ],
+              },
+            ],
+          },
+          { move: 'Bc4' }, // M3 (after e5) -> e4, e5, Bc4
+        ],
+      };
+      const result = pgnDataManager.flattenVariations(pgnData);
+
+      // Expect 3 lines:
+      // 1. Main: e4, e5, Bc4
+      // 2. Variation from e5, then main part of that variation: e4, c5, Nf3, Nc6
+      // 3. Variation from e5, then sub-variation from Nf3: e4, c5, Nf3, d6, d4
+      expect(result).toHaveLength(3);
+      expect(result).toContainEqual({
+        moves: [{ move: 'e4' }, { move: 'e5' }, { move: 'Bc4' }],
+        tags: undefined,
+        startingFEN: undefined,
+      });
+      expect(result).toContainEqual({
+        moves: [
+          { move: 'e4' },
+          { move: 'c5' },
+          { move: 'Nf3' },
+          { move: 'Nc6' },
+        ],
+        tags: undefined,
+        startingFEN: undefined,
+      });
+      expect(result).toContainEqual({
+        moves: [
+          { move: 'e4' },
+          { move: 'c5' },
+          { move: 'Nf3' },
+          { move: 'd6' },
+          { move: 'd4' },
+        ],
+        tags: undefined,
+        startingFEN: undefined,
+      });
+    });
+
+    test('should handle multiple RAVs at the same level', () => {
+      const pgnData: ParsedPgn = {
+        moves: [
+          { move: 'e4' },
+          {
+            move: 'e5',
+            rav: [
+              { moves: [{ move: 'c5' }] }, // Var 1: e4, c5
+              { moves: [{ move: 'c6' }] }, // Var 2: e4, c6
+            ],
+          },
+          // No main line continuation after e5, so e4, e5 is not a line itself
+        ],
+      };
+      const result = pgnDataManager.flattenVariations(pgnData);
+      expect(result).toHaveLength(2);
+      expect(result).toContainEqual({
+        moves: [{ move: 'e4' }, { move: 'c5' }],
+        tags: undefined,
+        startingFEN: undefined,
+      });
+      expect(result).toContainEqual({
+        moves: [{ move: 'e4' }, { move: 'c6' }],
+        tags: undefined,
+        startingFEN: undefined,
+      });
+    });
+
+    test('should include comments and NAGs in flattened moves but not RAVs', () => {
+      const pgnData: ParsedPgn = {
+        moves: [
+          { move: 'e4', comment: 'start' },
+          {
+            move: 'e5',
+            nag: ['$1'],
+            rav: [{ moves: [{ move: 'c5', comment: 'Sicilian' }] }],
+          },
+          { move: 'Nf3' },
+        ],
+      };
+      const result = pgnDataManager.flattenVariations(pgnData);
+      expect(result).toHaveLength(2);
+      // Main line: e4 (comment), e5 (nag), Nf3
+      expect(result).toContainEqual({
+        moves: [
+          { move: 'e4', comment: 'start' },
+          { move: 'e5', nag: ['$1'] },
+          { move: 'Nf3' },
+        ],
+        tags: undefined,
+        startingFEN: undefined,
+      });
+      // Variation: e4 (comment), c5 (comment)
+      expect(result).toContainEqual({
+        moves: [
+          { move: 'e4', comment: 'start' },
+          { move: 'c5', comment: 'Sicilian' },
+        ],
+        tags: undefined,
+        startingFEN: undefined,
+      });
+      // Check that RAVs are indeed undefined in the output moves
+      result.forEach((line) => {
+        line.moves.forEach((move) => {
+          expect(move.rav).toBeUndefined();
+        });
+      });
+    });
+
+    test('flattenVariations complex case from TrainingOrchestrator.test.ts', () => {
+      const complexPgn: ParsedPgn = {
+        moves: [
+          { move: 'e4' }, // 1. e4
+          {
+            move: 'e5', // 1...e5 (Main line part 1)
+            rav: [
+              {
+                // Variation A: 1...c5 (Sicilian)
+                moves: [
+                  { move: 'c5' }, // 1...c5
+                  { move: 'Nf3' }, // 2. Nf3 (after 1...c5)
+                  {
+                    move: 'd6', // 2...d6
+                    rav: [
+                      {
+                        // Variation A1: 2...Nc6 (after 2.Nf3 in Sicilian)
+                        moves: [
+                          { move: 'Nc6' }, // 2...Nc6
+                          { move: 'Bb5' }, // 3. Bb5
+                        ],
+                      },
+                    ],
+                  },
+                  { move: 'g6' }, // 3. g6 (after 2...d6 in Sicilian)
+                ],
+              },
+            ],
+          },
+          { move: 'Nf3' }, // 2. Nf3 (Main line part 2, after 1...e5)
+          { move: 'Nc6' }, // 2...Nc6 (Main line part 3)
+        ],
+      };
+      const result = pgnDataManager.flattenVariations(complexPgn);
+      // Expected lines:
+      // 1. Main line: e4, e5, Nf3, Nc6
+      // 2. Sicilian variation A, main: e4, c5, Nf3, d6, g6
+      // 3. Sicilian variation A1: e4, c5, Nf3, Nc6, Bb5
+      expect(result).toHaveLength(3);
+      expect(result).toContainEqual({
+        moves: [
+          { move: 'e4' },
+          { move: 'e5' },
+          { move: 'Nf3' },
+          { move: 'Nc6' },
+        ],
+        tags: undefined,
+        startingFEN: undefined,
+      });
+      expect(result).toContainEqual({
+        moves: [
+          { move: 'e4' },
+          { move: 'c5' },
+          { move: 'Nf3' },
+          { move: 'd6' },
+          { move: 'g6' },
+        ],
+        tags: undefined,
+        startingFEN: undefined,
+      });
+      expect(result).toContainEqual({
+        moves: [
+          { move: 'e4' },
+          { move: 'c5' },
+          { move: 'Nf3' },
+          { move: 'Nc6' },
+          { move: 'Bb5' },
+        ],
+        tags: undefined,
+        startingFEN: undefined,
+      });
+    });
+  });
+});
+</file>
+
+<file path="src/utils/PgnDataManager.ts">
+// src/utils/PgnDataManager.ts
+import { VariationParser } from './VariationParser';
+import {
+  ParsedPgn,
+  VariationLine,
+  PgnMove,
+  MoveForVariationKey,
+} from '@/types/pgnTypes';
+
+export class PgnDataManager {
+  private variationParser: VariationParser;
+  private parsedPgn: ParsedPgn | null = null;
+
+  constructor() {
+    this.variationParser = new VariationParser();
+  }
+
+  public loadPgn(pgnString: string): void {
+    if (!pgnString) {
+      this.parsedPgn = null;
+      // Potentially throw an error or return a status
+      return;
+    }
+    // TODO: Add try-catch for parsing errors
+    this.parsedPgn = this.variationParser.parse(pgnString) as ParsedPgn;
+  }
+
+  public getParsedPgn(): ParsedPgn | null {
+    return this.parsedPgn;
+  }
+
+  public hasPgnLoaded(): boolean {
+    return this.parsedPgn !== null;
+  }
+
+  public generateVariationKey(variationMoves: MoveForVariationKey[]): string {
+    if (!variationMoves || variationMoves.length === 0) {
+      return '';
+    }
+    return variationMoves.map((m) => m.move).join('_');
+  }
+
+  public flattenVariations(pgnData: ParsedPgn | null): VariationLine[] {
+    if (!pgnData || !pgnData.moves) {
+      return [];
+    }
+
+    const flatVariations: VariationLine[] = [];
+    const startingFEN = pgnData.tags?.FEN || pgnData.startingFEN; // Use FEN from tags if available
+
+    const recurse = (currentMoves: PgnMove[], accumulatedLine: PgnMove[]) => {
+      for (let i = 0; i < currentMoves.length; i++) {
+        const move = { ...currentMoves[i] };
+        const currentLineContinuation = [...accumulatedLine, move];
+
+        // Remove 'rav' from the move copy for the flattened line
+        delete move.rav;
+
+        if (move.rav && move.rav.length > 0) {
+          // Process main line first
+          const mainLineContinuation = [...currentLineContinuation];
+          if (i + 1 < currentMoves.length) {
+            // If there are more moves after the current one in the main sequence,
+            // continue recursion for the rest of the main line.
+            // This path is taken if the current move has variations AND is not the last move of its sequence.
+          } else {
+            // If this move (with variations) is the last in its current sequence,
+            // the mainLineContinuation up to this point forms a complete variation.
+            flatVariations.push({
+              moves: mainLineContinuation.map((m) => ({
+                ...m,
+                rav: undefined,
+              })), // Ensure no RAVs in final moves
+              tags: pgnData.tags,
+              startingFEN: startingFEN,
+            });
+          }
+
+          // Then process all variations (RAVs) from this move
+          move.rav.forEach((variation) => {
+            recurse(variation.moves, currentLineContinuation);
+          });
+        } else if (i === currentMoves.length - 1) {
+          // This is the last move in the current sequence, and it has no RAVs.
+          // This forms a complete variation line.
+          flatVariations.push({
+            moves: currentLineContinuation.map((m) => ({
+              ...m,
+              rav: undefined,
+            })), // Ensure no RAVs
+            tags: pgnData.tags,
+            startingFEN: startingFEN,
+          });
+        }
+      }
+    };
+
+    recurse(pgnData.moves, []);
+    return flatVariations;
+  }
+}
+</file>
 
 <file path="src/app/globals.css">
 @import "tailwindcss";
@@ -148,262 +1222,277 @@ export default function RootLayout({
 <file path="src/components/ChessBoard.tsx">
 'use client';
 
-import { Chess, Piece, Square } from 'chess.js';
-import { get } from 'http';
-import React, { useState } from 'react';
+import { Chess, PieceSymbol, Square, Move } from 'chess.js'; // Added Move type
+// import { get } from 'http'; // Removed unused import
+import React, { useState, useEffect, useCallback } from 'react';
 import { Chessboard } from 'react-chessboard';
+import { MoveHistory } from './MoveHistory';
 
 interface ChessBoardProps {
-  position: string;
-  onDrop: {
-    (sourceSquare: Square, targetSquare: Square, piece: Piece): boolean;
-  };
+  position: string; // FEN string or "start"
+  onMove: (move: {
+    from: Square;
+    to: Square;
+    piece: PieceSymbol;
+    san: string;
+    fen: string;
+  }) => void;
 }
 
-/**
- * @param {{position:string, onDrop:OnDropType}: ChessBoardProps} props
- * @returns {React.JSX.Element}
- * @description A chessboard component that displays the current position of the chess pieces and allows the user to move them.
- * @example
- * <ChessBoard
- *    position="start"
- *    onDrop={
- *      (sourceSquare, targetSquare) => console.log(sourceSquare, targetSquare)
- *    }
- * />
- */
-export function ChessBoard({}: ChessBoardProps): React.JSX.Element {
-  const [game, setGame] = useState(new Chess());
-  const [moveFrom, setMoveFrom] = useState('');
+export function ChessBoard(props: ChessBoardProps): React.JSX.Element {
+  // Added props parameter
+  const [game, setGame] = useState(() => {
+    const initialFen = props.position === 'start' ? undefined : props.position;
+    return new Chess(initialFen);
+  });
+  const [moveFrom, setMoveFrom] = useState<Square | ''>(''); // Ensure Square or empty string
   const [moveTo, setMoveTo] = useState<Square | null>(null);
   const [showPromotionDialog, setShowPromotionDialog] = useState(false);
-  const [rightClickedSquares, setRightClickedSquares] = useState({});
-  const [moveSquares, setMoveSquares] = useState({});
-  const [optionSquares, setOptionSquares] = useState({});
+  const [rightClickedSquares, setRightClickedSquares] = useState<
+    Record<string, any>
+  >({});
+  const [moveSquares, setMoveSquares] = useState<Record<string, any>>({}); // Kept for consistency, though not explicitly used in new logic
+  const [optionSquares, setOptionSquares] = useState<Record<string, any>>({});
+  const [moveHistory, setMoveHistory] = useState<string[]>([]);
+  const [currentEvaluation, setCurrentEvaluation] = useState<string | null>(
+    null,
+  );
+  const [lastMoveSquares, setLastMoveSquares] = useState<Record<string, any>>(
+    {},
+  );
 
-  function isPieceOnSquare(square: Square): boolean {
-    const piece = game.get(square);
-    return !(piece === null);
-  }
+  // Effect to handle external position changes
+  useEffect(() => {
+    const newFen = props.position === 'start' ? undefined : props.position;
+    const newGameInstance = new Chess(newFen);
+    setGame(newGameInstance);
+    setMoveHistory([]);
+    setCurrentEvaluation(null);
+    setMoveFrom('');
+    setMoveTo(null);
+    setOptionSquares({});
+    setRightClickedSquares({});
+    setShowPromotionDialog(false);
+    setLastMoveSquares({}); // Clear last move highlight
+  }, [props.position]);
 
-  function getPieceOnSquare(square: Square): string {
-    const piece = game.get(square);
-    if (piece) {
-      return piece.type;
-    }
-    return '';
-  }
+  // Effect for updating evaluation (mocked)
+  useEffect(() => {
+    const currentFen = game.fen();
+    setCurrentEvaluation('Calculating...');
 
-  function getPieceColorOnSquare(square: Square): string | null {
-    const piece = game.get(square);
-    if (piece) {
-      return piece.color;
-    }
-    return null;
-  }
+    const timerId = setTimeout(() => {
+      const mockEvalRaw = (Math.random() * 5 - 2.5).toFixed(2); // e.g., -2.50 to +2.50
+      const displayEval =
+        parseFloat(mockEvalRaw) >= 0 ? `+${mockEvalRaw}` : mockEvalRaw;
+      setCurrentEvaluation(displayEval);
+    }, 1200); // Simulate engine processing time
 
-  function getPieceTypeOnSquare(square: Square): string {
-    const piece = game.get(square);
-    if (piece) {
-      return piece.type;
-    }
-    return '';
-  }
+    return () => {
+      clearTimeout(timerId);
+    };
+  }, [game.fen()]); // Re-run when FEN changes
 
-  function findLegalMoveSquares(square: Square): string[] {
-    const piece = getPieceOnSquare(square);
-    const pieceColor = getPieceColorOnSquare(square);
-    const pieceType = getPieceTypeOnSquare(square);
-    if (!piece) {
-      return [];
-    }
-
-    if (!pieceColor || !pieceType) {
-      return [];
-    }
-
-    const moves = game.moves({
-      square,
-      verbose: true,
-    });
-    const legalMoves = moves.filter((move: any) => {
-      const movePiece = game.get(move.to) || null;
-      if (movePiece) {
-        return movePiece.color !== pieceColor;
-      } else {
-        return true;
-      }
-    });
-    return legalMoves.map((move: any) => move.to);
-  }
-
-  function isWhitePiece(square: Square): boolean {
-    return getPieceColorOnSquare(square) === 'w';
-  }
-
-  function isBlackPiece(square: Square): boolean {
-    return getPieceColorOnSquare(square) === 'b';
-  }
-
-  function isPawn(square: Square): boolean {
-    return getPieceTypeOnSquare(square) === 'p';
-  }
-
-  function isKnight(square: Square): boolean {
-    return getPieceTypeOnSquare(square) === 'n';
-  }
-
-  function isBishop(square: Square): boolean {
-    return getPieceTypeOnSquare(square) === 'b';
-  }
-
-  function isRook(square: Square): boolean {
-    return getPieceTypeOnSquare(square) === 'r';
-  }
-
-  function isQueen(square: Square): boolean {
-    return getPieceTypeOnSquare(square) === 'q';
-  }
-
-  function isKing(square: Square): boolean {
-    return getPieceTypeOnSquare(square) === 'k';
-  }
-
-  function hasValidMove(square: Square): boolean {
-    const piece = game.get(square);
-    if (!piece) {
-      return false;
-    }
-    const pieceColor = getPieceColorOnSquare(square);
-    const pieceType = getPieceTypeOnSquare(square);
-    const moves = game.moves({
-      square,
-      verbose: true,
-    });
-    const legalMoves = moves.filter((move: any) => {
-      const movePiece = game.get(move.to) || null;
-      if (movePiece) {
-        return getPieceColorOnSquare(move.to) !== pieceColor;
-      } else {
-        return true;
-      }
-    });
-    return legalMoves.length > 0;
-  }
-
-  function isPromotionMove(square: Square): boolean {
-    const piece = game.get(square);
-    if (!piece) {
-      return false;
-    }
-
-    // A white pawn can promote on rank 8/black on rank 1
-    const isWhitePromotion = isWhitePiece(square) && square[1] === '8';
-    const isBlackPromotion = isBlackPiece(square) && square[1] === '1';
-
-    // A promotion move is a pawn that has reached the last rank
-    return isPawn(square) && (isWhitePromotion || isBlackPromotion);
+  function getSafeMoves(square: Square): Move[] {
+    const moves = game.moves({ square, verbose: true });
+    return moves as Move[];
   }
 
   function onSquareClick(square: Square) {
     setRightClickedSquares({});
 
-    const currentSquare = square as string;
-    const piece = getPieceOnSquare(square);
-    const pieceColor = getPieceColorOnSquare(square);
-    const pieceType = getPieceTypeOnSquare(square);
-
-    // to square
-    if (!moveTo) {
-      // check if valid move before showing dialog
-      if (!hasValidMove(square)) {
-        return;
+    if (!moveFrom) {
+      // First click (selecting a piece to move)
+      const piece = game.get(square);
+      if (piece && piece.color === game.turn()) {
+        // Check if it's the current player's piece
+        setMoveFrom(square);
+        const moves = getSafeMoves(square);
+        const newOptionSquares: Record<string, any> = {};
+        moves.forEach((move) => {
+          newOptionSquares[move.to] = {
+            background:
+              game.get(move.to) && game.get(move.to)?.color !== piece.color
+                ? 'radial-gradient(circle, rgba(0,0,0,.1) 85%, transparent 85%)'
+                : 'radial-gradient(circle, rgba(0,0,0,.1) 25%, transparent 25%)',
+            borderRadius: '50%',
+          };
+        });
+        setOptionSquares(newOptionSquares);
       }
+      return;
+    }
 
-      // valid move
-      setMoveTo(square);
-
-      // if promotion move
-      if (isPromotionMove(square)) {
-        // show promotion dialog
-        setShowPromotionDialog(true);
-        return;
-      }
-
-      // is normal move
-      const gameCopy: any = {
-        ...game,
-      };
-      const move = gameCopy.move({
-        from: moveFrom,
-        to: square,
-        promotion: 'q',
-      });
-
-      setGame(gameCopy);
+    // Second click (selecting a destination square)
+    const pieceToMove = game.get(moveFrom);
+    if (!pieceToMove) {
       setMoveFrom('');
-      setMoveTo(null);
       setOptionSquares({});
       return;
     }
+
+    // Check if the move is a promotion
+    // A pawn move to the 1st or 8th rank
+    if (
+      pieceToMove.type === 'p' &&
+      ((pieceToMove.color === 'w' &&
+        (moveFrom as string)[1] === '7' &&
+        square[1] === '8') ||
+        (pieceToMove.color === 'b' &&
+          (moveFrom as string)[1] === '2' &&
+          square[1] === '1'))
+    ) {
+      // Check if the move is legal before showing promotion dialog
+      const isLegalPromotionMove = getSafeMoves(moveFrom).some(
+        (m) => m.to === square && m.flags.includes('p'),
+      );
+      if (isLegalPromotionMove) {
+        setMoveTo(square); // react-chessboard uses this for promotion
+        setShowPromotionDialog(true);
+        setOptionSquares({}); // Clear options, next action is promotion
+        // Move will be made in onPromotionPieceSelect
+        return;
+      } else {
+        // Illegal promotion attempt, reset
+        setMoveFrom('');
+        setMoveTo(null);
+        setOptionSquares({});
+        return;
+      }
+    }
+
+    // Attempt normal move
+    const newGame = new Chess(game.fen());
+    const moveResult = newGame.move({
+      from: moveFrom,
+      to: square,
+      promotion: 'q',
+    }); // 'q' is default for non-promotions
+
+    if (moveResult) {
+      setGame(newGame);
+      setMoveHistory((prev) => [...prev, moveResult.san]);
+      setLastMoveSquares({
+        // Highlight last move
+        [moveResult.from]: { backgroundColor: 'rgba(255, 255, 0, 0.4)' },
+        [moveResult.to]: { backgroundColor: 'rgba(255, 255, 0, 0.4)' },
+      });
+      if (props.onMove) {
+        props.onMove({
+          from: moveFrom as Square,
+          to: square,
+          piece: pieceToMove.type,
+          san: moveResult.san,
+          fen: newGame.fen(),
+        });
+      }
+    }
+    // Reset for next move
+    setMoveFrom('');
+    setMoveTo(null);
+    setOptionSquares({});
   }
 
-  function onPromotionPieceSelect(piece: string[]) {
-    // if no piece passed then user has cancelled dialog, don't make move and reset
-    if (piece) {
-      const gameCopy: any = {
-        ...game,
-      };
-      gameCopy.move({
+  function onPromotionPieceSelect(piece?: PieceSymbol) {
+    if (piece && moveFrom && moveTo) {
+      const newGame = new Chess(game.fen());
+      const pieceToMoveDetails = game.get(moveFrom); // For onDrop
+
+      const moveResult = newGame.move({
         from: moveFrom,
-        to: moveTo || '',
-        promotion: piece[1].toLowerCase() ?? 'q',
+        to: moveTo,
+        promotion: piece,
       });
-      setGame(gameCopy);
+
+      if (moveResult) {
+        setGame(newGame);
+        setMoveHistory((prev) => [...prev, moveResult.san]);
+        setLastMoveSquares({
+          // Highlight last move
+          [moveResult.from]: { backgroundColor: 'rgba(255, 255, 0, 0.4)' },
+          [moveResult.to]: { backgroundColor: 'rgba(255, 255, 0, 0.4)' },
+        });
+        if (props.onMove && pieceToMoveDetails) {
+          props.onMove({
+            from: moveFrom as Square,
+            to: moveTo,
+            piece: pieceToMoveDetails.type,
+            san: moveResult.san,
+            fen: newGame.fen(),
+          });
+        }
+      }
     }
+    // Reset states after promotion attempt or cancellation
     setMoveFrom('');
     setMoveTo(null);
     setShowPromotionDialog(false);
     setOptionSquares({});
-    return true;
+    return true; // Required by react-chessboard's onPromotionPieceSelect
   }
 
-  function onSquareRightClick(square: string | number) {
+  function onSquareRightClick(square: Square) {
     const colour = 'rgba(0, 0, 255, 0.4)';
     setRightClickedSquares({
       ...rightClickedSquares,
       [square]: {
         backgroundColor: colour,
-        borderRadius: '50%',
-        boxShadow: `0 0 10px ${colour}`,
+        // borderRadius: '50%', // Optional: keep or remove based on desired style
+        // boxShadow: `0 0 10px ${colour}`, // Optional
       },
     });
   }
 
+  // The old handleUserMove is removed as move history is updated directly.
+  // const handleUserMove = useCallback(async (from: string, to: string) => {
+  // setMoveHistory(prev => [...prev, `${from}-${to}`]);
+  // }, []);
+
   return (
-    <div>
-      <Chessboard
-        id="ClickToMove"
-        animationDuration={200}
-        arePiecesDraggable={false}
-        position={game.fen()}
-        onSquareClick={onSquareClick}
-        onSquareRightClick={onSquareRightClick}
-        customBoardStyle={{
-          borderRadius: '4px',
-          boxShadow: '0 2px 10px rgba(0, 0, 0, 0.5)',
-        }}
-        customSquareStyles={{
-          ...moveSquares,
-          ...optionSquares,
-          ...rightClickedSquares,
-        }}
-        promotionToSquare={moveTo}
-        showPromotionDialog={showPromotionDialog}
-      />
+    <div className="flex flex-col items-center">
+      <div>
+        <Chessboard
+          id="ClickToMoveChessBoard" // Changed ID for clarity
+          animationDuration={200}
+          arePiecesDraggable={false} // Using click-to-move
+          position={game.fen()}
+          onSquareClick={onSquareClick}
+          onSquareRightClick={onSquareRightClick}
+          onPromotionPieceSelect={onPromotionPieceSelect}
+          promotionToSquare={moveTo}
+          showPromotionDialog={showPromotionDialog}
+          customBoardStyle={{
+            borderRadius: '4px',
+            boxShadow: '0 2px 10px rgba(0, 0, 0, 0.5)',
+          }}
+          customSquareStyles={{
+            ...moveSquares, // Kept for potential future use
+            ...optionSquares,
+            ...rightClickedSquares,
+            ...lastMoveSquares, // Added for last move highlight
+          }}
+        />
+      </div>
+      <div className="w-full max-w-md mt-4">
+        <h3 className="text-lg font-semibold mb-2">Move History</h3>
+        <MoveHistory moveHistory={moveHistory} />
+      </div>
+      {/* Corrected JSX structure for Evaluation section */}
+      <div className="w-full max-w-md mt-2">
+        <h3 className="text-lg font-semibold mb-1">Evaluation</h3>
+        <p className="text-sm text-gray-700">
+          {currentEvaluation !== null ? currentEvaluation : 'N/A'}
+        </p>
+      </div>
     </div>
   );
 }
+
+// Removed helper functions like isPieceOnSquare, getPieceOnSquare etc. as they are not directly
+// used in the refactored logic or are encapsulated within chess.js instance (game.get, game.moves)
+// If any specific checks are needed, they can be done via game instance.
+// For example, game.get(square) returns piece details or null.
+// game.moves({ square, verbose: true }) gives all legal moves from a square.
 </file>
 
 <file path="src/enums/ChessPiece.ts">
@@ -758,26 +1847,6 @@ export class VariationParser {
 }
 </file>
 
-<file path=".repomixignore">
-# Add patterns to ignore here, one per line
-# Example:
-# *.log
-# tmp/
-
-package-lock.json 
-.next/
-.vscode/ 
-node_modules/
-pubic/
-repomix.config.json/
-.prettierrc
-.gitignore
-repomix-output.xml
-*.svg
-*.prompt
-*.md
-</file>
-
 <file path="eslint.config.mjs">
 import { dirname } from "path";
 import { fileURLToPath } from "url";
@@ -914,6 +1983,26 @@ export default function Home() {
 }
 </file>
 
+<file path=".repomixignore">
+# Add patterns to ignore here, one per line
+# Example:
+# *.log
+# tmp/
+
+package-lock.json 
+.next/
+.vscode/ 
+node_modules/
+pubic/
+repomix.config.json/
+.prettierrc
+.gitignore
+repomix-output.xml
+*.svg
+*.prompt
+*.md
+</file>
+
 <file path="package.json">
 {
   "name": "chess-drill",
@@ -954,72 +2043,101 @@ export default function Home() {
 </file>
 
 <file path="src/utils/TrainingOrchestrator.ts">
-import { VariationParser } from './VariationParser';
-
-// Define a type for parsed PGN moves, including recursive RAVs
-export interface PgnMove {
-  move: string;
-  comment?: string;
-  nag?: string[];
-  rav?: PgnRav[]; // Changed from singular "rav" to match test expectations
-  [key: string]: any; // For any other properties that might exist
-}
-
-export interface PgnRav {
-  moves: PgnMove[];
-}
-
-// The overall structure of parsed PGN data
-export interface ParsedPgn {
-  moves: PgnMove[];
-  tags?: Record<string, string>;
-  result?: string;
-  // Other properties that might be present in parsed PGN
-}
-
-// Structure for flattened variation lines
-export interface VariationLine {
-  moves: PgnMove[]; // Without 'rav' properties
-  tags?: Record<string, string>; // Tags from the original PGN
-}
-
-// Interface for the objects expected in the array passed to generateVariationKey
-interface MoveForVariationKey {
-  move: string;
-  // Allow other properties to exist on the object, but they won't be used for the key.
-  [key: string]: any;
-}
+import { PgnDataManager } from './PgnDataManager'; // Added import
+import { ChessEngine } from './ChessEngine';
+import { StatsStore } from './StatsStore';
+import { DrillSession } from './DrillSession'; // Added import
+import {
+  ParsedPgn,
+  PgnMove,
+  VariationLine,
+  MoveForVariationKey,
+} from '@/types/pgnTypes'; // Consolidated imports
 
 export class TrainingOrchestrator {
-  private variationParser: VariationParser;
-  private parsedPgn: ParsedPgn | null = null;
+  private pgnDataManager: PgnDataManager; // Added
+  private _engine: ChessEngine | null = null; // Retained for now, though DrillSession has its own
+  private statsStore: StatsStore;
+  private _drillSession: DrillSession | null = null; // Added property
 
   constructor() {
-    this.variationParser = new VariationParser();
+    this.pgnDataManager = new PgnDataManager(); // Initialize PgnDataManager
+    this._engine = new ChessEngine(); // Retained for now
+    this.statsStore = new StatsStore();
   }
 
   public loadPgn(pgnString: string): void {
     if (!pgnString) {
       throw new Error('PGN string cannot be empty.');
     }
-    this.parsedPgn = this.variationParser.parse(pgnString);
-    // TODO: Add more robust error handling if parse can fail
+    this.pgnDataManager.loadPgn(pgnString);
+    if (
+      !this.pgnDataManager.hasPgnLoaded() ||
+      !this.pgnDataManager.getParsedPgn()
+    ) {
+      // Handle cases where PGN might be invalid and not properly parsed by PgnDataManager
+      // This check ensures that subsequent operations don't assume a valid parsedPgn state
+      // console.warn("PGN loaded but data might be invalid or empty.");
+    }
   }
 
   public getParsedPgn(): ParsedPgn | null {
-    return this.parsedPgn;
+    return this.pgnDataManager.getParsedPgn();
   }
 
   public hasPgnLoaded(): boolean {
-    return this.parsedPgn !== null;
+    return this.pgnDataManager.hasPgnLoaded();
   }
 
   public generateVariationKey(variationMoves: MoveForVariationKey[]): string {
-    if (!variationMoves || variationMoves.length === 0) {
-      return '';
+    return this.pgnDataManager.generateVariationKey(variationMoves);
+  }
+
+  public getCurrentVariation(): VariationLine | undefined {
+    return this._drillSession?.getVariation();
+  }
+
+  public getCurrentVariationKey(): string {
+    const currentVariation = this._drillSession?.getVariation();
+    if (!currentVariation) return '';
+    return this.pgnDataManager.generateVariationKey(currentVariation.moves);
+  }
+
+  /**
+   * Determines if the user plays White or Black based on the first move of the variation.
+   * For MVP: if move starts with '...', user is Black; otherwise, user is White.
+   */
+  public determineUserColor(variation: VariationLine): 'w' | 'b' | undefined {
+    if (!variation.moves || variation.moves.length === 0) return undefined;
+    const firstMove = variation.moves[0];
+
+    // Check if the PGN move number indicates Black's move (e.g., "1... e5")
+    // or if the move itself is a Black move SAN (e.g. starts with a number then '...')
+    // A more robust way would be to check the FEN before this move if available,
+    // or rely on the PGN parser to correctly identify turns.
+    // For now, a simple check on the SAN string.
+    if (firstMove.move_number && firstMove.turn === 'b') {
+      // Assuming pgn-parser provides turn info
+      return 'b';
     }
-    // Create the key by joining only the 'move' property of each object
-    return variationMoves.map((m) => m.move).join('_');
+    // Fallback for simple PGNs or parsers not providing turn
+    if (typeof firstMove.move === 'string' && firstMove.move.includes('...')) {
+      return 'b'; // User plays Black
+    }
+    return 'w'; // User plays White
+  }
+
+  /**
+   * Selects a random variation from the provided array.
+   * Returns undefined if the array is empty.
+   */
+  public selectRandomVariation(
+    flatVariations: VariationLine[],
+  ): VariationLine | undefined {
+    if (!flatVariations || flatVariations.length === 0) return undefined;
+    if (flatVariations.length === 1) return flatVariations[0];
+    const idx = Math.floor(Math.random() * flatVariations.length);
+    return flatVariations[idx];
   }
 
   /**
@@ -1029,116 +2147,326 @@ export class TrainingOrchestrator {
    * @returns An array of VariationLine objects, each representing a complete playable variation.
    */
   public flattenVariations(pgnData: ParsedPgn | null): VariationLine[] {
-    if (!pgnData || !pgnData.moves || pgnData.moves.length === 0) {
-      return [];
+    return this.pgnDataManager.flattenVariations(pgnData); // Delegated
+  }
+
+  public startTrainingSession(userPlaysAs?: 'w' | 'b'): void {
+    if (!this.pgnDataManager.hasPgnLoaded()) {
+      throw new Error('PGN not loaded. Cannot start training session.');
+    }
+    const parsedPgn = this.pgnDataManager.getParsedPgn();
+    if (!parsedPgn) {
+      throw new Error(
+        'PGN data is null despite PGN being loaded. Cannot start training session.',
+      );
     }
 
-    const flatVariations: VariationLine[] = [];
-    const tags = pgnData.tags;
+    const flatVariations = this.pgnDataManager.flattenVariations(parsedPgn);
+    if (flatVariations.length === 0) {
+      throw new Error(
+        'No variations found in PGN. Cannot start training session.',
+      );
+    }
 
-    // Helper function to create a deep copy of a move without rav property
-    const copyMoveWithoutRav = (move: PgnMove): PgnMove => {
-      const { rav, ...moveCopy } = move;
-      return moveCopy;
+    const selectedVariation = this.selectRandomVariation(flatVariations);
+    if (!selectedVariation) {
+      // Should not happen if flatVariations is not empty
+      throw new Error('Failed to select a variation.');
+    }
+
+    const determinedUserColor =
+      userPlaysAs || this.determineUserColor(selectedVariation);
+    if (!determinedUserColor) {
+      throw new Error(
+        'Could not determine user color for the selected variation.',
+      );
+    }
+
+    // Initialize the DrillSession
+    this._drillSession = new DrillSession(
+      selectedVariation,
+      determinedUserColor,
+      selectedVariation.startingFEN,
+    );
+
+    // TODO: Auto-play opponent moves if it's not the user's turn initially.
+    // This logic might need to be in DrillSession's constructor or a method called here.
+    // For now, we assume the drill starts and waits for the user if it's their turn,
+    // or the UI/DrillSession handles the first opponent move.
+    // Example:
+    // if (this._drillSession && !this._drillSession.isUserTurn()) {
+    //   this._drillSession.playOpponentMoveIfApplicable(); // A hypothetical method
+    // }
+  }
+
+  public getCurrentFen(): string | undefined {
+    return this._drillSession?.getCurrentFen();
+  }
+
+  public getExpectedMoveForCurrentUser(): PgnMove | undefined {
+    return this._drillSession?.getExpectedMove();
+  }
+
+  public isUserTurn(): boolean {
+    return this._drillSession ? this._drillSession.isUserTurn() : false;
+  }
+
+  public handleUserMove(moveInput: {
+    from: string;
+    to: string;
+    promotion?: string;
+  }): {
+    isValid: boolean; // Changed from success to isValid for clarity with DrillSession
+    isCorrectMove: boolean; // Added
+    isVariationComplete?: boolean;
+    nextFen?: string;
+    opponentMove?: PgnMove | null;
+    expectedMoveSan?: string; // Changed from expectedMove to expectedMoveSan for clarity
+  } {
+    if (!this._drillSession) {
+      throw new Error('No active training session. Start a session first.');
+    }
+
+    // Note: isUserTurn check is implicitly handled by DrillSession.handleUserMove
+    // or should be checked by the UI before calling this.
+    // If we want to enforce it here:
+    // if (!this._drillSession.isUserTurn()) {
+    //   throw new Error("It is not the user's turn.");
+    // }
+
+    const expectedMoveBeforeUserAction = this._drillSession.getExpectedMove();
+
+    const result = this._drillSession.handleUserMove(moveInput);
+
+    if (result.success && result.isCorrectMove) {
+      this.statsStore.recordResult(this.getCurrentVariationKey(), true);
+    } else if (result.success && !result.isCorrectMove) {
+      // User made a valid board move, but it was not the correct one for the drill
+      this.statsStore.recordResult(this.getCurrentVariationKey(), false);
+    }
+    // If result.success is false, it means the move was illegal or an engine error occurred.
+    // Stats are not recorded for illegal moves by default, but this could be a design choice.
+
+    return {
+      isValid: result.success,
+      isCorrectMove: result.isCorrectMove,
+      isVariationComplete: result.isComplete,
+      nextFen: result.newFen,
+      opponentMove: result.opponentMove,
+      expectedMoveSan: expectedMoveBeforeUserAction?.move, // Return the SAN of the move that was expected
     };
+  }
 
-    // DFS function to build all possible variation lines
-    const buildVariations = (currentPath: PgnMove[], movesArray: PgnMove[]) => {
-      if (movesArray.length === 0) {
-        return;
+  public isDrillComplete(): boolean {
+    return this._drillSession ? this._drillSession.isDrillComplete() : false;
+  }
+
+  public getVariationPlayCount(variationKey: string): number {
+    if (this.statsStore && typeof this.statsStore.getStats === 'function') {
+      const stats = this.statsStore.getStats(variationKey);
+      return stats ? stats.attempts : 0;
+    }
+    return 0;
+  }
+
+  public getVariationSuccessRate(variationKey: string): number {
+    if (this.statsStore && typeof this.statsStore.getStats === 'function') {
+      const stats = this.statsStore.getStats(variationKey);
+      if (stats && stats.attempts > 0) {
+        return stats.successes / stats.attempts;
       }
-
-      let currentLine = [...currentPath];
-
-      // Process each move in the current sequence
-      for (let i = 0; i < movesArray.length; i++) {
-        const move = movesArray[i];
-
-        // First, process any RAVs (alternative variations) from this position
-        if (move.rav && move.rav.length > 0) {
-          // For each RAV, start a new variation from the current path
-          for (const rav of move.rav) {
-            if (rav.moves && rav.moves.length > 0) {
-              buildVariations(currentLine, rav.moves);
-            }
-          }
-        }
-
-        // Add the current move to our path (without its RAVs)
-        currentLine.push(copyMoveWithoutRav(move));
-
-        // If this is the last move in the sequence, add the completed line to our results
-        if (i === movesArray.length - 1) {
-          flatVariations.push({
-            moves: [...currentLine],
-            tags,
-          });
-        }
-      }
-    };
-
-    // Start building variations from the root moves
-    buildVariations([], pgnData.moves);
-
-    return flatVariations;
+    }
+    return 0;
   }
 }
 </file>
 
 <file path="src/utils/TrainingOrchestrator.test.ts">
-import { TrainingOrchestrator } from '@/utils/TrainingOrchestrator';
-import { describe, test, expect, jest, beforeEach } from '@jest/globals'; // Import jest
-import { VariationParser } from '@/utils/VariationParser'; // Import VariationParser
+import {
+  TrainingOrchestrator,
+  // ParsedPgn, PgnMove, PgnRav, VariationLine, // These types are now imported from @/types/pgnTypes
+} from '@/utils/TrainingOrchestrator';
+import {
+  ParsedPgn,
+  PgnMove,
+  PgnRav,
+  VariationLine,
+  MoveForVariationKey,
+} from '@/types/pgnTypes'; // Added import
+import { describe, test, expect, jest, beforeEach } from '@jest/globals';
+// import { VariationParser } from '@/utils/VariationParser'; // No longer directly used by TrainingOrchestrator
+import { PgnDataManager } from '@/utils/PgnDataManager'; // Import PgnDataManager
+import { ChessEngine } from '@/utils/ChessEngine';
+import { StatsStore } from '@/utils/StatsStore';
+import { DrillSession } from '@/utils/DrillSession'; // Import DrillSession
 
-// Mock VariationParser
-jest.mock('@/utils/VariationParser'); // Corrected mock path
+// Mock PgnDataManager
+jest.mock('@/utils/PgnDataManager');
 
-const mockParse = jest.fn();
-VariationParser.prototype.parse = mockParse;
+// Mock ChessEngine
+jest.mock('@/utils/ChessEngine');
 
-// A helper type for the mock PGN data to ensure consistency
-export interface MockMove {
-  move: string;
-  comment?: string;
-  nag?: string[];
-  rav?: MockRav[]; // For nested variations
-  // Potentially other PGN move properties
-}
+// Mock StatsStore
+jest.mock('@/utils/StatsStore');
 
-// Define a type for RAV (Recursive Annotation Variation)
-export interface MockRav {
-  moves: MockMove[];
-  // Potentially other RAV properties
-}
+// Mock DrillSession
+jest.mock('@/utils/DrillSession');
 
-// A helper type for the mock PGN data to ensure consistency
-export interface MockParsedPgnData {
-  moves: MockMove[];
-  result?: string;
-  tags?: Record<string, any>; // Allow any for tags in mock
-  // Potentially other top-level PGN properties
-}
+// Helper function to create a mock PgnDataManager instance
+const createMockPgnDataManager = () => ({
+  loadPgn: jest.fn(),
+  getParsedPgn: jest.fn().mockReturnValue(null),
+  hasPgnLoaded: jest.fn().mockReturnValue(false),
+  generateVariationKey: jest
+    .fn()
+    .mockImplementation((moves: MoveForVariationKey[]) =>
+      moves.map((m) => m.move).join('_'),
+    ),
+  flattenVariations: jest.fn().mockReturnValue([]),
+});
 
-interface MockParsedPgnWithComments extends MockParsedPgnData {
-  comments: string[];
-}
-interface MockParsedPgnWithNags extends MockParsedPgnData {
-  nags: string[];
-}
-interface MockParsedPgnWithRav extends MockParsedPgnData {
-  rav: { moves: { move: string }[] }[];
-}
+// Helper function to create a mock DrillSession instance
+const createMockDrillSessionInstance = () => ({
+  getCurrentFen: jest
+    .fn()
+    .mockReturnValue(
+      'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+    ),
+  getExpectedMove: jest.fn().mockReturnValue(null),
+  isUserTurn: jest.fn().mockReturnValue(false),
+  handleUserMove: jest.fn().mockReturnValue({
+    success: false,
+    isCorrectMove: false,
+    newFen: '',
+    isComplete: false,
+  }),
+  isDrillComplete: jest.fn().mockReturnValue(false),
+  getVariation: jest.fn().mockReturnValue(undefined),
+  getUserColor: jest.fn().mockReturnValue('w'),
+});
 
 describe('TrainingOrchestrator', () => {
+  let MockPgnDataManager: jest.MockedClass<typeof PgnDataManager>; // For the class mock
+  let mockPgnDataManagerInstance: jest.Mocked<PgnDataManager>; // For the instance mock
+  let MockChessEngine: jest.MockedClass<typeof ChessEngine>;
+  let MockStatsStore: jest.MockedClass<typeof StatsStore>;
+  let mockEngineInstance: jest.Mocked<ChessEngine>;
+  let mockStatsStoreInstance: jest.Mocked<StatsStore>;
+  let MockDrillSession: jest.MockedClass<typeof DrillSession>;
+  let mockDrillSessionInstance: jest.Mocked<DrillSession>;
+
+  let samplePgnData: ParsedPgn;
+  let sampleVariationLine: VariationLine;
+
   beforeEach(() => {
     // Clear mock calls before each test
-    mockParse.mockClear();
-    // Reset mock return value for each test if necessary
-    mockParse.mockReturnValue(undefined);
+    // mockParse.mockClear(); // VariationParser is no longer directly used or mocked here
+    // mockParse.mockReturnValue(undefined); // VariationParser is no longer directly used or mocked here
+
+    // Setup PgnDataManager mock
+    MockPgnDataManager = PgnDataManager as jest.MockedClass<
+      typeof PgnDataManager
+    >;
+    mockPgnDataManagerInstance =
+      createMockPgnDataManager() as jest.Mocked<PgnDataManager>; // Use helper
+    MockPgnDataManager.mockImplementation(() => mockPgnDataManagerInstance);
+
+    // Create new mock instances for each test
+    MockChessEngine = ChessEngine as jest.MockedClass<typeof ChessEngine>;
+    MockStatsStore = StatsStore as jest.MockedClass<typeof StatsStore>;
+
+    // Mocks for ChessEngine instance methods
+    mockEngineInstance = {
+      reset: jest.fn(),
+      load: jest.fn(), // Mock the load method
+      loadPgn: jest.fn(),
+      makeMove: jest.fn(),
+      getHistory: jest.fn().mockReturnValue([]),
+      game: {
+        fen: jest
+          .fn()
+          .mockReturnValue(
+            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+          ),
+        turn: jest.fn().mockReturnValue('w'),
+        // Add other chess.js game properties/methods if needed by TrainingOrchestrator
+      },
+    } as unknown as jest.Mocked<ChessEngine>; // Use unknown for type assertion flexibility
+
+    // Mocks for StatsStore instance methods
+    mockStatsStoreInstance = {
+      recordResult: jest.fn(),
+      getStats: jest.fn().mockReturnValue({ attempts: 0, successes: 0 }),
+    } as unknown as jest.Mocked<StatsStore>;
+
+    MockChessEngine.mockImplementation(() => mockEngineInstance);
+    MockStatsStore.mockImplementation(() => mockStatsStoreInstance);
+
+    // Clear ChessEngine mocks
+    ChessEngine.mockClear();
+    if (
+      ChessEngine.mock.instances[0] &&
+      ChessEngine.mock.instances[0].makeMove
+    ) {
+      ChessEngine.mock.instances[0].makeMove.mockClear();
+    }
+    // Setup a default mock implementation for ChessEngine for tests that need it
+    const mockMakeMove = jest.fn();
+    const mockGetFen = jest
+      .fn()
+      .mockReturnValue(
+        'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      ); // Default FEN
+    const mockTurn = jest.fn().mockReturnValue('w'); // Default turn
+    ChessEngine.mockImplementation(() => ({
+      makeMove: mockMakeMove,
+      game: {
+        fen: mockGetFen,
+        turn: mockTurn,
+        // Add other methods like load, pgn, etc., if autoAdvanceToUserTurn or other logic needs them
+        load: jest.fn(),
+        pgn: jest.fn(),
+        history: jest.fn().mockReturnValue([]),
+        validateFen: jest.fn().mockReturnValue({ valid: true }),
+        loadPgn: jest.fn(),
+      },
+      reset: jest.fn(),
+      loadPgn: jest.fn(), // Mock for ChessEngine's loadPgn
+      getHistory: jest.fn().mockReturnValue([]),
+      getCurrentFen: mockGetFen, // If ChessEngine has its own getCurrentFen
+    }));
+
+    MockDrillSession = DrillSession as jest.MockedClass<typeof DrillSession>;
+    mockDrillSessionInstance =
+      createMockDrillSessionInstance() as jest.Mocked<DrillSession>;
+
+    // Sample data for tests
+    samplePgnData = {
+      moves: [{ move: 'e4' }, { move: 'e5' }],
+      tags: { Event: 'Test Game' },
+      startingFEN: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+    };
+    sampleVariationLine = {
+      moves: [{ move: 'e4' }, { move: 'e5' }],
+      tags: { Event: 'Test Game' },
+      startingFEN: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+    };
   });
-  test('constructor(): should be able to instantiate', () => {
+
+  test('constructor(): should be able to instantiate and initialize PgnDataManager, ChessEngine and StatsStore', () => {
     const orchestrator = new TrainingOrchestrator();
     expect(orchestrator).toBeDefined();
+    expect(MockPgnDataManager).toHaveBeenCalledTimes(1); // Check PgnDataManager instantiation
+    expect(MockChessEngine).toHaveBeenCalledTimes(1);
+    expect(MockStatsStore).toHaveBeenCalledTimes(1);
+    expect(orchestrator.statsStore).toBeDefined();
+    expect(orchestrator.statsStore).toBeInstanceOf(MockStatsStore);
+    // @ts-ignore access private member for test
+    expect(orchestrator.pgnDataManager).toBeInstanceOf(MockPgnDataManager); // Check instance type
+    // @ts-ignore access private member for test
+    expect(orchestrator._engine).toBeInstanceOf(MockChessEngine);
+    // @ts-ignore access private member for test
+    expect(orchestrator._drillSession).toBeNull();
   });
 
   describe('loadPgn', () => {
@@ -1147,98 +2475,118 @@ describe('TrainingOrchestrator', () => {
       expect(() => orchestrator.loadPgn('')).toThrow(
         'PGN string cannot be empty.',
       );
+      expect(mockPgnDataManagerInstance.loadPgn).not.toHaveBeenCalled(); // Ensure delegate not called for empty
     });
 
-    test('should parse and store a simple PGN string', () => {
+    test('should call PgnDataManager.loadPgn with the PGN string', () => {
       const orchestrator = new TrainingOrchestrator();
       const pgnString = '1. e4 e5';
-      const mockParsedPgn: MockParsedPgnData = {
-        moves: [{ move: 'e4' }, { move: 'e5' }],
-        result: '*',
-        tags: {},
-      };
-      mockParse.mockReturnValue(mockParsedPgn);
-
       orchestrator.loadPgn(pgnString);
-
-      expect(mockParse).toHaveBeenCalledWith(pgnString);
-      expect(orchestrator.getParsedPgn()).toEqual(mockParsedPgn); // Verify storage
-    });
-
-    test('getParsedPgn() should return null if PGN has not been loaded', () => {
-      const orchestrator = new TrainingOrchestrator();
-      expect(orchestrator.getParsedPgn()).toBeNull();
-    });
-
-    test('loadPgn() should store null if VariationParser returns null (e.g. invalid PGN)', () => {
-      const orchestrator = new TrainingOrchestrator();
-      const pgnString = 'invalid pgn';
-      mockParse.mockReturnValue(null); // Simulate parser returning null for invalid PGN
-
-      orchestrator.loadPgn(pgnString);
-
-      expect(mockParse).toHaveBeenCalledWith(pgnString);
-      expect(orchestrator.getParsedPgn()).toBeNull();
+      expect(mockPgnDataManagerInstance.loadPgn).toHaveBeenCalledWith(
+        pgnString,
+      );
     });
   });
 
-  describe('loadPgn with complex PGNs', () => {
-    test('should correctly parse PGN with comments', () => {
+  describe('getParsedPgn', () => {
+    test('should call PgnDataManager.getParsedPgn and return its result', () => {
       const orchestrator = new TrainingOrchestrator();
-      const pgnStringWithComment = '1. e4 {This is a comment} e5';
-      // Define what the mock parser should return, including comments if your structure supports it
-      const mockParsedPgnWithComment: MockParsedPgnData = {
-        moves: [
-          { move: 'e4', comment: 'This is a comment' }, // Assuming comments are attached to moves
-          { move: 'e5' },
-        ],
-        result: '*',
-        tags: {},
-      };
-      mockParse.mockReturnValue(mockParsedPgnWithComment);
-      orchestrator.loadPgn(pgnStringWithComment);
-      expect(mockParse).toHaveBeenCalledWith(pgnStringWithComment);
-      expect(orchestrator.getParsedPgn()).toEqual(mockParsedPgnWithComment);
+      const mockParsedPgn: ParsedPgn = { moves: [{ move: 'e4' }] }; // Example ParsedPgn
+      mockPgnDataManagerInstance.getParsedPgn.mockReturnValue(mockParsedPgn);
+
+      const result = orchestrator.getParsedPgn();
+
+      expect(mockPgnDataManagerInstance.getParsedPgn).toHaveBeenCalledTimes(1);
+      expect(result).toEqual(mockParsedPgn);
     });
 
-    test('should correctly parse PGN with NAGs', () => {
+    test('should return null if PgnDataManager.getParsedPgn returns null', () => {
       const orchestrator = new TrainingOrchestrator();
-      const pgnStringWithNag = '1. e4 $1 e5'; // $1 is a common NAG for good move
-      const mockParsedPgnWithNag: MockParsedPgnData = {
-        moves: [
-          { move: 'e4', nag: ['$1'] }, // Assuming NAGs are in an array
-          { move: 'e5' },
-        ],
-        result: '*',
-        tags: {},
-      };
-      mockParse.mockReturnValue(mockParsedPgnWithNag);
-      orchestrator.loadPgn(pgnStringWithNag);
-      expect(mockParse).toHaveBeenCalledWith(pgnStringWithNag);
-      expect(orchestrator.getParsedPgn()).toEqual(mockParsedPgnWithNag);
+      mockPgnDataManagerInstance.getParsedPgn.mockReturnValue(null);
+      const result = orchestrator.getParsedPgn();
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('hasPgnLoaded', () => {
+    test('should call PgnDataManager.hasPgnLoaded and return its result', () => {
+      const orchestrator = new TrainingOrchestrator();
+      mockPgnDataManagerInstance.hasPgnLoaded.mockReturnValue(true);
+      expect(orchestrator.hasPgnLoaded()).toBe(true);
+      expect(mockPgnDataManagerInstance.hasPgnLoaded).toHaveBeenCalledTimes(1);
+
+      mockPgnDataManagerInstance.hasPgnLoaded.mockReturnValue(false);
+      expect(orchestrator.hasPgnLoaded()).toBe(false);
+    });
+  });
+
+  describe('generateVariationKey', () => {
+    test('should call PgnDataManager.generateVariationKey and return its result', () => {
+      const orchestrator = new TrainingOrchestrator();
+      const moves: PgnMove[] = [{ move: 'e4' }, { move: 'e5' }];
+      const expectedKey = 'e4_e5';
+      // The mock for generateVariationKey is already set up by createMockPgnDataManager
+      // to behave correctly. If specific behavior for this test is needed, override here.
+      // mockPgnDataManagerInstance.generateVariationKey.mockReturnValue(expectedKey);
+
+      const key = orchestrator.generateVariationKey(moves);
+      expect(
+        mockPgnDataManagerInstance.generateVariationKey,
+      ).toHaveBeenCalledWith(moves);
+      expect(key).toBe(expectedKey);
     });
 
-    // Test for nested variations will be more complex and might require adjustments
-    // to MockParsedPgnData and the mock implementation of VariationParser
-    // For now, this is a placeholder structure
-    test('should correctly parse PGN with nested variations (RAVs)', () => {
+    test('should handle empty move sequence by delegating', () => {
       const orchestrator = new TrainingOrchestrator();
-      const pgnStringWithRav = '1. e4 (1... d5 2. exd5) e5';
-      const mockParsedPgnWithRav = {
-        moves: [
-          {
-            move: 'e4',
-            rav: [{ moves: [{ move: 'd5' }, { move: 'exd5' }] }], // Simplified RAV structure
-          },
-          { move: 'e5' },
-        ],
-        result: '*',
-        tags: {},
-      } as any; // Using 'as any' for now due to complex structure
-      mockParse.mockReturnValue(mockParsedPgnWithRav);
-      orchestrator.loadPgn(pgnStringWithRav);
-      expect(mockParse).toHaveBeenCalledWith(pgnStringWithRav);
-      expect(orchestrator.getParsedPgn()).toEqual(mockParsedPgnWithRav);
+      const moves: PgnMove[] = [];
+      // mockPgnDataManagerInstance.generateVariationKey.mockReturnValue(''); // Default mock handles this
+      const key = orchestrator.generateVariationKey(moves);
+      expect(
+        mockPgnDataManagerInstance.generateVariationKey,
+      ).toHaveBeenCalledWith(moves);
+      expect(key).toBe('');
+    });
+  });
+
+  // New describe block for flattenVariations
+  describe('flattenVariations', () => {
+    let orchestrator: TrainingOrchestrator;
+
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+    });
+
+    test('should call PgnDataManager.flattenVariations and return its result', () => {
+      const parsedPgn: ParsedPgn = { moves: [{ move: 'e4' }, { move: 'e5' }] };
+      const mockFlatVariations: VariationLine[] = [
+        { moves: [{ move: 'e4' }, { move: 'e5' }] },
+      ];
+      mockPgnDataManagerInstance.flattenVariations.mockReturnValue(
+        mockFlatVariations,
+      );
+
+      const result = orchestrator.flattenVariations(parsedPgn);
+
+      expect(mockPgnDataManagerInstance.flattenVariations).toHaveBeenCalledWith(
+        parsedPgn,
+      );
+      expect(result).toEqual(mockFlatVariations);
+    });
+
+    test('should return an empty array if PgnDataManager.flattenVariations returns an empty array', () => {
+      const parsedPgn: ParsedPgn = { moves: [] }; // Example with no moves
+      mockPgnDataManagerInstance.flattenVariations.mockReturnValue([]);
+      const result = orchestrator.flattenVariations(parsedPgn);
+      expect(result).toEqual([]);
+    });
+
+    test('should pass null to PgnDataManager.flattenVariations if input is null', () => {
+      mockPgnDataManagerInstance.flattenVariations.mockReturnValue([]); // Default behavior for null
+      const result = orchestrator.flattenVariations(null);
+      expect(mockPgnDataManagerInstance.flattenVariations).toHaveBeenCalledWith(
+        null,
+      );
+      expect(result).toEqual([]);
     });
   });
 
@@ -1251,12 +2599,12 @@ describe('TrainingOrchestrator', () => {
     test('should return true if PGN has been successfully loaded', () => {
       const orchestrator = new TrainingOrchestrator();
       const pgnString = '1. e4 e5';
-      const mockParsedPgn: MockParsedPgnData = {
+      const mockParsedPgn: ParsedPgn = {
         moves: [{ move: 'e4' }, { move: 'e5' }],
         result: '*',
         tags: {},
       };
-      mockParse.mockReturnValue(mockParsedPgn);
+      mockPgnDataManagerInstance.getParsedPgn.mockReturnValue(mockParsedPgn);
       orchestrator.loadPgn(pgnString);
       expect(orchestrator.hasPgnLoaded()).toBe(true);
     });
@@ -1264,7 +2612,7 @@ describe('TrainingOrchestrator', () => {
     test('should return false if PGN loading resulted in null (invalid PGN)', () => {
       const orchestrator = new TrainingOrchestrator();
       const pgnString = 'invalid pgn';
-      mockParse.mockReturnValue(null);
+      mockPgnDataManagerInstance.getParsedPgn.mockReturnValue(null);
       orchestrator.loadPgn(pgnString);
       expect(orchestrator.hasPgnLoaded()).toBe(false);
     });
@@ -1273,8 +2621,7 @@ describe('TrainingOrchestrator', () => {
   describe('generateVariationKey', () => {
     test('should generate a consistent key for a sequence of moves', () => {
       const orchestrator = new TrainingOrchestrator();
-      // Use the MockMove type for the moves array
-      const moves: MockMove[] = [
+      const moves: PgnMove[] = [
         { move: 'e4' },
         { move: 'e5' },
         { move: 'Nf3' },
@@ -1287,8 +2634,8 @@ describe('TrainingOrchestrator', () => {
 
     test('should generate different keys for different move sequences', () => {
       const orchestrator = new TrainingOrchestrator();
-      const moves1: MockMove[] = [{ move: 'e4' }, { move: 'e5' }];
-      const moves2: MockMove[] = [{ move: 'd4' }, { move: 'd5' }];
+      const moves1: PgnMove[] = [{ move: 'e4' }, { move: 'e5' }];
+      const moves2: PgnMove[] = [{ move: 'd4' }, { move: 'd5' }];
       const key1 = orchestrator.generateVariationKey(moves1);
       const key2 = orchestrator.generateVariationKey(moves2);
       expect(key1).not.toBe(key2);
@@ -1296,18 +2643,18 @@ describe('TrainingOrchestrator', () => {
 
     test('should handle empty move sequence', () => {
       const orchestrator = new TrainingOrchestrator();
-      const moves: MockMove[] = [];
+      const moves: PgnMove[] = [];
       const key = orchestrator.generateVariationKey(moves);
       expect(key).toBe('');
     });
 
     test("should generate a key based only on the 'move' property", () => {
       const orchestrator = new TrainingOrchestrator();
-      const moves1: MockMove[] = [
+      const moves1: PgnMove[] = [
         { move: 'e4', comment: 'A comment' },
         { move: 'e5' },
       ];
-      const moves2: MockMove[] = [{ move: 'e4' }, { move: 'e5' }];
+      const moves2: PgnMove[] = [{ move: 'e4' }, { move: 'e5' }];
       const key1 = orchestrator.generateVariationKey(moves1);
       const key2 = orchestrator.generateVariationKey(moves2);
       expect(key1).toBe(key2);
@@ -1321,8 +2668,6 @@ describe('TrainingOrchestrator', () => {
 
     beforeEach(() => {
       orchestrator = new TrainingOrchestrator();
-      // We don't need to mock VariationParser.parse here as flattenVariations
-      // will take the parsed PGN as an argument.
     });
 
     test('should return an empty array if parsedPgn is null', () => {
@@ -1330,16 +2675,16 @@ describe('TrainingOrchestrator', () => {
     });
 
     test('should return an empty array if parsedPgn has no moves', () => {
-      const parsedPgn: MockParsedPgnData = { moves: [] };
+      const parsedPgn: ParsedPgn = { moves: [] };
       expect(orchestrator.flattenVariations(parsedPgn)).toEqual([]);
     });
 
     test('should return a single variation for a PGN with no RAVs', () => {
-      const parsedPgn: MockParsedPgnData = {
+      const parsedPgn: ParsedPgn = {
         moves: [{ move: 'e4' }, { move: 'e5' }, { move: 'Nf3' }],
-        tags: { White: 'User' }, // Example tag
+        tags: { White: 'User' },
       };
-      const expectedFlatVariations = [
+      const expectedFlatVariations: VariationLine[] = [
         {
           moves: [{ move: 'e4' }, { move: 'e5' }, { move: 'Nf3' }],
           tags: { White: 'User' },
@@ -1351,14 +2696,14 @@ describe('TrainingOrchestrator', () => {
     });
 
     test('should flatten a PGN with a simple RAV at the first move', () => {
-      const parsedPgn: MockParsedPgnData = {
+      const parsedPgn: ParsedPgn = {
         moves: [
           { move: 'e4', rav: [{ moves: [{ move: 'd5' }, { move: 'exd5' }] }] },
           { move: 'e5' },
         ],
         tags: { Event: 'Test Game' },
       };
-      const expectedFlatVariations = [
+      const expectedFlatVariations: VariationLine[] = [
         {
           moves: [{ move: 'e4' }, { move: 'e5' }],
           tags: { Event: 'Test Game' },
@@ -1366,9 +2711,8 @@ describe('TrainingOrchestrator', () => {
         {
           moves: [{ move: 'd5' }, { move: 'exd5' }],
           tags: { Event: 'Test Game' },
-        }, // RAV becomes a separate line
+        },
       ];
-      // Sort for consistent comparison as order might not be guaranteed depending on implementation
       const result = orchestrator
         .flattenVariations(parsedPgn)
         .sort((a, b) => a.moves[0].move.localeCompare(b.moves[0].move));
@@ -1380,7 +2724,7 @@ describe('TrainingOrchestrator', () => {
     });
 
     test('should flatten a PGN with a RAV deeper in the main line', () => {
-      const parsedPgn: MockParsedPgnData = {
+      const parsedPgn: ParsedPgn = {
         moves: [
           { move: 'e4' },
           { move: 'e5' },
@@ -1388,7 +2732,7 @@ describe('TrainingOrchestrator', () => {
           { move: 'Bc4' },
         ],
       };
-      const expectedFlatVariations = [
+      const expectedFlatVariations: VariationLine[] = [
         {
           moves: [
             { move: 'e4' },
@@ -1419,20 +2763,16 @@ describe('TrainingOrchestrator', () => {
     });
 
     test('should handle multiple RAVs at the same level', () => {
-      const parsedPgn: MockParsedPgnData = {
+      const parsedPgn: ParsedPgn = {
         moves: [
           {
             move: 'e4',
-            rav: [
-              { moves: [{ move: 'c5' }] }, // Sicilian
-              { moves: [{ move: 'e5' }] }, // Open Game
-            ],
+            rav: [{ moves: [{ move: 'c5' }] }, { moves: [{ move: 'e5' }] }],
           },
-          // No main line continuation after e4 for this test case
         ],
       };
-      const expectedFlatVariations = [
-        { moves: [{ move: 'e4' }], tags: undefined }, // Main line up to the branch point
+      const expectedFlatVariations: VariationLine[] = [
+        { moves: [{ move: 'e4' }], tags: undefined },
         { moves: [{ move: 'c5' }], tags: undefined },
         { moves: [{ move: 'e5' }], tags: undefined },
       ];
@@ -1447,7 +2787,7 @@ describe('TrainingOrchestrator', () => {
     });
 
     test('should flatten deeply nested RAVs', () => {
-      const parsedPgn: MockParsedPgnData = {
+      const parsedPgn: ParsedPgn = {
         moves: [
           {
             move: 'e4',
@@ -1460,15 +2800,14 @@ describe('TrainingOrchestrator', () => {
               },
             ],
           },
-          { move: 'd4' }, // Main line continuation
+          { move: 'd4' },
         ],
       };
-      const expectedFlatVariations = [
+      const expectedFlatVariations: VariationLine[] = [
         { moves: [{ move: 'e4' }, { move: 'd4' }], tags: undefined },
         { moves: [{ move: 'c5' }, { move: 'Nf3' }], tags: undefined },
         { moves: [{ move: 'c5' }, { move: 'd6' }], tags: undefined },
       ];
-      // Sorting becomes more complex here, might need a more robust comparison or ensure specific order from flattenVariations
       const result = orchestrator.flattenVariations(parsedPgn).sort((a, b) => {
         const len = Math.min(a.moves.length, b.moves.length);
         for (let i = 0; i < len; i++) {
@@ -1489,7 +2828,7 @@ describe('TrainingOrchestrator', () => {
     });
 
     test('should include comments and NAGs in flattened variations if they exist on moves', () => {
-      const parsedPgn: MockParsedPgnData = {
+      const parsedPgn: ParsedPgn = {
         moves: [
           { move: 'e4', comment: 'Good move' },
           {
@@ -1499,7 +2838,7 @@ describe('TrainingOrchestrator', () => {
           },
         ],
       };
-      const expectedFlatVariations = [
+      const expectedFlatVariations: VariationLine[] = [
         {
           moves: [
             { move: 'e4', comment: 'Good move' },
@@ -1523,6 +2862,582 @@ describe('TrainingOrchestrator', () => {
           a.moves[1].move.localeCompare(b.moves[1].move),
         ),
       );
+    });
+  });
+
+  describe('selectRandomVariation', () => {
+    let orchestrator: TrainingOrchestrator;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+    });
+
+    test('should return undefined if the input array is empty', () => {
+      const result = orchestrator.selectRandomVariation([]);
+      expect(result).toBeUndefined();
+    });
+
+    test('should return the only variation if array has one element', () => {
+      const variation = { moves: [{ move: 'e4' }], tags: { White: 'User' } };
+      const result = orchestrator.selectRandomVariation([variation]);
+      expect(result).toBe(variation);
+    });
+
+    test('should return a variation from the array (randomly)', () => {
+      const variations = [
+        { moves: [{ move: 'e4' }], tags: { White: 'User' } },
+        { moves: [{ move: 'd4' }], tags: { White: 'User' } },
+        { moves: [{ move: 'c4' }], tags: { White: 'User' } },
+      ];
+      // Mock Math.random to always return 0.5 (middle element)
+      const originalRandom = Math.random;
+      Math.random = () => 0.5;
+      const result = orchestrator.selectRandomVariation(variations);
+      expect(variations).toContain(result);
+      Math.random = originalRandom;
+    });
+  });
+
+  describe('selectRandomVariation edge cases', () => {
+    let orchestrator: TrainingOrchestrator;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+    });
+
+    test('should return undefined if PGN is not loaded and flattenVariations is called with null', () => {
+      // Simulate not loaded PGN
+      const result = orchestrator.selectRandomVariation(
+        orchestrator.flattenVariations(null),
+      );
+      expect(result).toBeUndefined();
+    });
+
+    test('should return undefined if flattenVariations returns an empty array', () => {
+      // Simulate loaded PGN but no moves
+      const result = orchestrator.selectRandomVariation([]);
+      expect(result).toBeUndefined();
+    });
+  });
+
+  describe('getCurrentVariation', () => {
+    let orchestrator: TrainingOrchestrator;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+    });
+
+    test('should return undefined if no variation has been selected', () => {
+      expect(orchestrator.getCurrentVariation()).toBeUndefined();
+    });
+
+    test('should return the currently selected variation after selection', () => {
+      const variations = [
+        { moves: [{ move: 'e4' }], tags: { White: 'User' } },
+        { moves: [{ move: 'd4' }], tags: { White: 'User' } },
+      ];
+      // Simulate selection
+      // @ts-ignore (simulate private property for test)
+      orchestrator._currentVariation = variations[1];
+      expect(orchestrator.getCurrentVariation()).toBe(variations[1]);
+    });
+  });
+
+  describe('getCurrentVariationKey', () => {
+    let orchestrator: TrainingOrchestrator;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+    });
+
+    test('should return an empty string if no variation is selected', () => {
+      expect(orchestrator.getCurrentVariationKey()).toBe('');
+    });
+
+    test('should return the correct key for the current variation', () => {
+      const variation = {
+        moves: [{ move: 'e4' }, { move: 'e5' }],
+        tags: { White: 'User' },
+      };
+      // @ts-ignore (simulate private property for test)
+      orchestrator._currentVariation = variation;
+      expect(orchestrator.getCurrentVariationKey()).toBe('e4_e5');
+    });
+  });
+
+  describe('determineUserColor', () => {
+    let orchestrator: TrainingOrchestrator;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+    });
+
+    test('should return "w" if the first move is a White move (e.g., e4)', () => {
+      const variation = { moves: [{ move: 'e4' }, { move: 'e5' }] };
+      expect(orchestrator.determineUserColor(variation)).toBe('w');
+    });
+
+    test('should return "b" if the first move is a Black move (e.g., ...e5)', () => {
+      const variation = { moves: [{ move: '...e5' }, { move: 'Nf3' }] };
+      expect(orchestrator.determineUserColor(variation)).toBe('b');
+    });
+
+    test('should return undefined if moves array is empty', () => {
+      const variation = { moves: [] };
+      expect(orchestrator.determineUserColor(variation)).toBeUndefined();
+    });
+  });
+
+  describe('startTrainingSession', () => {
+    let orchestrator: TrainingOrchestrator;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+      mockPgnDataManagerInstance.hasPgnLoaded.mockReturnValue(true);
+      mockPgnDataManagerInstance.getParsedPgn.mockReturnValue(samplePgnData);
+      mockPgnDataManagerInstance.flattenVariations.mockReturnValue([
+        sampleVariationLine,
+      ]);
+      // Mock the DrillSession constructor to return our mock instance
+      MockDrillSession.mockImplementation(() => mockDrillSessionInstance);
+    });
+
+    test('should throw error if PGN not loaded', () => {
+      mockPgnDataManagerInstance.hasPgnLoaded.mockReturnValue(false);
+      expect(() => orchestrator.startTrainingSession()).toThrow(
+        'PGN not loaded',
+      );
+    });
+
+    test('should throw error if parsed PGN is null', () => {
+      mockPgnDataManagerInstance.getParsedPgn.mockReturnValue(null);
+      expect(() => orchestrator.startTrainingSession()).toThrow(
+        'PGN data is null',
+      );
+    });
+
+    test('should throw error if no variations found', () => {
+      mockPgnDataManagerInstance.flattenVariations.mockReturnValue([]);
+      expect(() => orchestrator.startTrainingSession()).toThrow(
+        'No variations found',
+      );
+    });
+
+    test('should create and store a DrillSession instance', () => {
+      orchestrator.startTrainingSession('w');
+      expect(MockDrillSession).toHaveBeenCalledTimes(1);
+      // @ts-ignore
+      expect(orchestrator._drillSession).toBe(mockDrillSessionInstance);
+    });
+
+    test('should instantiate DrillSession with selected variation, user color, and starting FEN', () => {
+      const determinedColor = 'w';
+      jest
+        .spyOn(orchestrator, 'determineUserColor')
+        .mockReturnValue(determinedColor);
+      jest
+        .spyOn(orchestrator, 'selectRandomVariation')
+        .mockReturnValue(sampleVariationLine);
+
+      orchestrator.startTrainingSession(); // No userPlaysAs, so determineUserColor will be called
+
+      expect(orchestrator.selectRandomVariation).toHaveBeenCalledWith([
+        sampleVariationLine,
+      ]);
+      expect(orchestrator.determineUserColor).toHaveBeenCalledWith(
+        sampleVariationLine,
+      );
+      expect(MockDrillSession).toHaveBeenCalledWith(
+        sampleVariationLine,
+        determinedColor,
+        sampleVariationLine.startingFEN,
+      );
+    });
+
+    test('should use userPlaysAs color if provided, overriding determinedUserColor', () => {
+      const userPlaysAsColor = 'b';
+      jest
+        .spyOn(orchestrator, 'selectRandomVariation')
+        .mockReturnValue(sampleVariationLine);
+      const determineUserColorSpy = jest.spyOn(
+        orchestrator,
+        'determineUserColor',
+      );
+
+      orchestrator.startTrainingSession(userPlaysAsColor);
+
+      expect(determineUserColorSpy).not.toHaveBeenCalled();
+      expect(MockDrillSession).toHaveBeenCalledWith(
+        sampleVariationLine,
+        userPlaysAsColor,
+        sampleVariationLine.startingFEN,
+      );
+    });
+
+    test('should throw if user color cannot be determined and is not provided', () => {
+      jest.spyOn(orchestrator, 'determineUserColor').mockReturnValue(undefined);
+      expect(() => orchestrator.startTrainingSession()).toThrow(
+        'Could not determine user color',
+      );
+    });
+  });
+
+  describe('startTrainingSession (core logic)', () => {
+    let orchestrator: TrainingOrchestrator;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+    });
+
+    test('should select a random variation, determine user color, and initialize ChessEngine', () => {
+      // Mock parsed PGN and flattenVariations
+      const mockParsedPgn = { moves: [{ move: 'e4' }, { move: 'e5' }] };
+      // @ts-ignore
+      mockPgnDataManagerInstance.getParsedPgn.mockReturnValue(mockParsedPgn);
+      const variations = [
+        { moves: [{ move: 'e4' }, { move: 'e5' }], tags: { White: 'User' } },
+        { moves: [{ move: 'd4' }, { move: 'd5' }], tags: { White: 'User' } },
+      ];
+      jest.spyOn(orchestrator, 'flattenVariations').mockReturnValue(variations);
+      jest
+        .spyOn(orchestrator, 'selectRandomVariation')
+        .mockReturnValue(variations[1]);
+      jest.spyOn(orchestrator, 'determineUserColor').mockReturnValue('w');
+
+      orchestrator.startTrainingSession();
+
+      // @ts-ignore
+      expect(orchestrator._currentVariation).toBe(variations[1]);
+      // @ts-ignore
+      expect(orchestrator._userColor).toBe('w');
+      // @ts-ignore
+      expect(orchestrator._engine).toBeDefined();
+    });
+  });
+
+  describe('startTrainingSession (auto-advance to user turn)', () => {
+    let orchestrator: TrainingOrchestrator;
+    let ChessEngineMock: any;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+      // Mock ChessEngine
+      ChessEngineMock = jest.fn().mockImplementation(() => {
+        return {
+          reset: jest.fn(),
+          makeMove: jest.fn(),
+          game: {
+            turn: jest.fn(),
+            fen: jest.fn().mockReturnValue('mocked-fen'),
+          },
+        };
+      });
+      jest.resetModules();
+      jest.doMock('./ChessEngine', () => ({ ChessEngine: ChessEngineMock }));
+    });
+
+    afterEach(() => {
+      jest.dontMock('./ChessEngine');
+    });
+
+    test("should auto-play opponent moves until it is the user's turn", () => {
+      // User is Black, variation starts with White's move
+      const mockParsedPgn = {
+        moves: [{ move: 'e4' }, { move: 'e5' }, { move: 'Nf3' }],
+      };
+      // @ts-ignore
+      mockPgnDataManagerInstance.getParsedPgn.mockReturnValue(mockParsedPgn);
+      const variation = {
+        moves: [{ move: 'e4' }, { move: 'e5' }, { move: 'Nf3' }],
+      };
+      jest
+        .spyOn(orchestrator, 'flattenVariations')
+        .mockReturnValue([variation]);
+      jest
+        .spyOn(orchestrator, 'selectRandomVariation')
+        .mockReturnValue(variation);
+      jest.spyOn(orchestrator, 'determineUserColor').mockReturnValue('b');
+
+      orchestrator.startTrainingSession();
+
+      // @ts-ignore
+      const engine = orchestrator._engine;
+      // Should have called makeMove for e4 (White's move), then stopped for Black's turn
+      expect(engine.makeMove).toHaveBeenCalledWith('e4');
+      // Should not have called makeMove for e5 (Black's move)
+      expect(engine.makeMove).not.toHaveBeenCalledWith('e5');
+    });
+  });
+
+  describe('getCurrentFen', () => {
+    test('should return undefined if no drill session', () => {
+      const orchestrator = new TrainingOrchestrator();
+      expect(orchestrator.getCurrentFen()).toBeUndefined();
+    });
+    test('should return FEN from DrillSession', () => {
+      const orchestrator = new TrainingOrchestrator();
+      // @ts-ignore
+      orchestrator._drillSession = mockDrillSessionInstance;
+      mockDrillSessionInstance.getCurrentFen.mockReturnValue('test_fen');
+      expect(orchestrator.getCurrentFen()).toBe('test_fen');
+      expect(mockDrillSessionInstance.getCurrentFen).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('getExpectedMoveForCurrentUser', () => {
+    test('should return undefined if no drill session', () => {
+      const orchestrator = new TrainingOrchestrator();
+      expect(orchestrator.getExpectedMoveForCurrentUser()).toBeUndefined();
+    });
+    test('should return move from DrillSession', () => {
+      const orchestrator = new TrainingOrchestrator();
+      // @ts-ignore
+      orchestrator._drillSession = mockDrillSessionInstance;
+      const expectedMove: PgnMove = { move: 'Nf3' };
+      mockDrillSessionInstance.getExpectedMove.mockReturnValue(expectedMove);
+      expect(orchestrator.getExpectedMoveForCurrentUser()).toEqual(
+        expectedMove,
+      );
+      expect(mockDrillSessionInstance.getExpectedMove).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('isUserTurn', () => {
+    test('should return false if no drill session', () => {
+      const orchestrator = new TrainingOrchestrator();
+      expect(orchestrator.isUserTurn()).toBe(false);
+    });
+    test('should return value from DrillSession', () => {
+      const orchestrator = new TrainingOrchestrator();
+      // @ts-ignore
+      orchestrator._drillSession = mockDrillSessionInstance;
+      mockDrillSessionInstance.isUserTurn.mockReturnValue(true);
+      expect(orchestrator.isUserTurn()).toBe(true);
+      expect(mockDrillSessionInstance.isUserTurn).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('handleUserMove', () => {
+    let orchestrator: TrainingOrchestrator;
+    const userMoveInput = { from: 'e2', to: 'e4' };
+
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+      // @ts-ignore // Setup active session
+      orchestrator._drillSession = mockDrillSessionInstance;
+      // Mock getVariation and generateVariationKey for stats recording
+      mockDrillSessionInstance.getVariation.mockReturnValue(
+        sampleVariationLine,
+      );
+      mockPgnDataManagerInstance.generateVariationKey.mockReturnValue(
+        'test_key',
+      );
+    });
+
+    test('should throw if no active drill session', () => {
+      // @ts-ignore
+      orchestrator._drillSession = null;
+      expect(() => orchestrator.handleUserMove(userMoveInput)).toThrow(
+        'No active training session',
+      );
+    });
+
+    test('should call DrillSession.handleUserMove with the input', () => {
+      orchestrator.handleUserMove(userMoveInput);
+      expect(mockDrillSessionInstance.handleUserMove).toHaveBeenCalledWith(
+        userMoveInput,
+      );
+    });
+
+    test('should record stats as success if move is correct', () => {
+      mockDrillSessionInstance.handleUserMove.mockReturnValue({
+        success: true,
+        isCorrectMove: true,
+        newFen: 'fen1',
+        isComplete: false,
+        opponentMove: null,
+      });
+      orchestrator.handleUserMove(userMoveInput);
+      expect(mockStatsStoreInstance.recordResult).toHaveBeenCalledWith(
+        'test_key',
+        true,
+      );
+    });
+
+    test('should record stats as failure if move is incorrect but valid on board', () => {
+      mockDrillSessionInstance.handleUserMove.mockReturnValue({
+        success: true,
+        isCorrectMove: false,
+        newFen: 'fen1',
+        isComplete: false,
+        opponentMove: null,
+      });
+      orchestrator.handleUserMove(userMoveInput);
+      expect(mockStatsStoreInstance.recordResult).toHaveBeenCalledWith(
+        'test_key',
+        false,
+      );
+    });
+
+    test('should not record stats if DrillSession.handleUserMove indicates success:false (illegal move)', () => {
+      mockDrillSessionInstance.handleUserMove.mockReturnValue({
+        success: false,
+        isCorrectMove: false,
+        newFen: 'fen1',
+        isComplete: false,
+        opponentMove: null,
+      });
+      orchestrator.handleUserMove(userMoveInput);
+      expect(mockStatsStoreInstance.recordResult).not.toHaveBeenCalled();
+    });
+
+    test('should return the mapped result from DrillSession.handleUserMove', () => {
+      const drillResult = {
+        success: true,
+        isCorrectMove: true,
+        newFen: 'new_fen_here',
+        opponentMove: { move: 'Nf6' },
+        isComplete: true,
+      };
+      mockDrillSessionInstance.handleUserMove.mockReturnValue(drillResult);
+      const expectedPgnMove: PgnMove = { move: 'e4' }; // from sampleVariationLine[0]
+      mockDrillSessionInstance.getExpectedMove.mockReturnValueOnce(
+        expectedPgnMove,
+      );
+
+      const result = orchestrator.handleUserMove(userMoveInput);
+
+      expect(result.isValid).toBe(drillResult.success);
+      expect(result.isCorrectMove).toBe(drillResult.isCorrectMove);
+      expect(result.nextFen).toBe(drillResult.newFen);
+      expect(result.opponentMove).toEqual(drillResult.opponentMove);
+      expect(result.isVariationComplete).toBe(drillResult.isComplete);
+      expect(result.expectedMoveSan).toBe(expectedPgnMove.move);
+    });
+  });
+
+  describe('isDrillComplete', () => {
+    test('should return false if no drill session', () => {
+      const orchestrator = new TrainingOrchestrator();
+      expect(orchestrator.isDrillComplete()).toBe(false);
+    });
+    test('should return value from DrillSession.isDrillComplete', () => {
+      const orchestrator = new TrainingOrchestrator();
+      // @ts-ignore
+      orchestrator._drillSession = mockDrillSessionInstance;
+      mockDrillSessionInstance.isDrillComplete.mockReturnValue(true);
+      expect(orchestrator.isDrillComplete()).toBe(true);
+      expect(mockDrillSessionInstance.isDrillComplete).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('getVariationPlayCount', () => {
+    let orchestrator: any;
+    let StatsStoreMock: any;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+      StatsStoreMock = {
+        getStats: jest.fn().mockReturnValue({ attempts: 3, successes: 2 }),
+      };
+      orchestrator.statsStore = StatsStoreMock;
+    });
+
+    test('should return the play count (attempts) for a given variation key', () => {
+      const key = 'e4_e5_Nf3';
+      const count = orchestrator.getVariationPlayCount(key);
+      expect(StatsStoreMock.getStats).toHaveBeenCalledWith(key);
+      expect(count).toBe(3);
+    });
+
+    test('should return 0 if the variation key is not found in stats', () => {
+      StatsStoreMock.getStats.mockReturnValue({ attempts: 0, successes: 0 });
+      const key = 'd4_d5_c4';
+      const count = orchestrator.getVariationPlayCount(key);
+      expect(StatsStoreMock.getStats).toHaveBeenCalledWith(key);
+      expect(count).toBe(0);
+    });
+  });
+
+  describe('getVariationSuccessRate', () => {
+    let orchestrator: any;
+    let StatsStoreMock: any;
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+      StatsStoreMock = { getStats: jest.fn() };
+      orchestrator.statsStore = StatsStoreMock;
+    });
+
+    test('should return the success rate for a given variation key', () => {
+      StatsStoreMock.getStats.mockReturnValue({ attempts: 10, successes: 7 });
+      const key = 'e4_e5_Nf3_Nc6';
+      const rate = orchestrator.getVariationSuccessRate(key);
+      expect(StatsStoreMock.getStats).toHaveBeenCalledWith(key);
+      expect(rate).toBe(0.7);
+    });
+
+    test('should return 0 if attempts are 0 to avoid division by zero', () => {
+      StatsStoreMock.getStats.mockReturnValue({ attempts: 0, successes: 0 });
+      const key = 'd4_d5_c4_e6';
+      const rate = orchestrator.getVariationSuccessRate(key);
+      expect(StatsStoreMock.getStats).toHaveBeenCalledWith(key);
+      expect(rate).toBe(0);
+    });
+
+    test('should return 0 if the variation key is not found in stats', () => {
+      StatsStoreMock.getStats.mockReturnValue({ attempts: 0, successes: 0 }); // Or mock it to return undefined/null if that's the behavior
+      const key = 'non_existent_key';
+      const rate = orchestrator.getVariationSuccessRate(key);
+      expect(StatsStoreMock.getStats).toHaveBeenCalledWith(key);
+      expect(rate).toBe(0);
+    });
+  });
+
+  // Tests for PgnDataManager delegation (loadPgn, getParsedPgn, etc.)
+  // These were covered in the previous step but ensure they are correct.
+  describe('PgnDataManager delegation', () => {
+    let orchestrator: TrainingOrchestrator;
+    const pgnString = '1. e4 e5';
+    const parsedPgn: ParsedPgn = {
+      moves: [{ move: 'e4' }],
+      tags: {},
+      startingFEN: '',
+    };
+    const movesArray: MoveForVariationKey[] = [{ move: 'e4' }];
+
+    beforeEach(() => {
+      orchestrator = new TrainingOrchestrator();
+    });
+
+    test('loadPgn should delegate to PgnDataManager.loadPgn', () => {
+      orchestrator.loadPgn(pgnString);
+      expect(mockPgnDataManagerInstance.loadPgn).toHaveBeenCalledWith(
+        pgnString,
+      );
+    });
+
+    test('getParsedPgn should delegate to PgnDataManager.getParsedPgn', () => {
+      mockPgnDataManagerInstance.getParsedPgn.mockReturnValue(parsedPgn);
+      const result = orchestrator.getParsedPgn();
+      expect(mockPgnDataManagerInstance.getParsedPgn).toHaveBeenCalled();
+      expect(result).toEqual(parsedPgn);
+    });
+
+    test('hasPgnLoaded should delegate to PgnDataManager.hasPgnLoaded', () => {
+      mockPgnDataManagerInstance.hasPgnLoaded.mockReturnValue(true);
+      const result = orchestrator.hasPgnLoaded();
+      expect(mockPgnDataManagerInstance.hasPgnLoaded).toHaveBeenCalled();
+      expect(result).toBe(true);
+    });
+
+    test('generateVariationKey should delegate to PgnDataManager.generateVariationKey', () => {
+      mockPgnDataManagerInstance.generateVariationKey.mockReturnValue('e4_key');
+      const result = orchestrator.generateVariationKey(movesArray);
+      expect(
+        mockPgnDataManagerInstance.generateVariationKey,
+      ).toHaveBeenCalledWith(movesArray);
+      expect(result).toBe('e4_key');
+    });
+
+    test('flattenVariations should delegate to PgnDataManager.flattenVariations', () => {
+      const flatVars: VariationLine[] = [sampleVariationLine];
+      mockPgnDataManagerInstance.flattenVariations.mockReturnValue(flatVars);
+      const result = orchestrator.flattenVariations(parsedPgn);
+      expect(mockPgnDataManagerInstance.flattenVariations).toHaveBeenCalledWith(
+        parsedPgn,
+      );
+      expect(result).toEqual(flatVars);
     });
   });
 });

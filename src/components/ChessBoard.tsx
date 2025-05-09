@@ -1,258 +1,273 @@
 'use client';
 
-import { Chess, Piece, Square } from 'chess.js';
-import { get } from 'http';
-import React, { useState } from 'react';
+import { Chess, PieceSymbol, Square, Move } from 'chess.js'; // Added Move type
+// import { get } from 'http'; // Removed unused import
+import React, { useState, useEffect, useCallback } from 'react';
 import { Chessboard } from 'react-chessboard';
+import { MoveHistory } from './MoveHistory';
 
 interface ChessBoardProps {
-  position: string;
-  onDrop: {
-    (sourceSquare: Square, targetSquare: Square, piece: Piece): boolean;
-  };
+  position: string; // FEN string or "start"
+  onMove: (move: {
+    from: Square;
+    to: Square;
+    piece: PieceSymbol;
+    san: string;
+    fen: string;
+  }) => void;
 }
 
-/**
- * @param {{position:string, onDrop:OnDropType}: ChessBoardProps} props
- * @returns {React.JSX.Element}
- * @description A chessboard component that displays the current position of the chess pieces and allows the user to move them.
- * @example
- * <ChessBoard
- *    position="start"
- *    onDrop={
- *      (sourceSquare, targetSquare) => console.log(sourceSquare, targetSquare)
- *    }
- * />
- */
-export function ChessBoard({}: ChessBoardProps): React.JSX.Element {
-  const [game, setGame] = useState(new Chess());
-  const [moveFrom, setMoveFrom] = useState('');
+export function ChessBoard(props: ChessBoardProps): React.JSX.Element {
+  // Added props parameter
+  const [game, setGame] = useState(() => {
+    const initialFen = props.position === 'start' ? undefined : props.position;
+    return new Chess(initialFen);
+  });
+  const [moveFrom, setMoveFrom] = useState<Square | ''>(''); // Ensure Square or empty string
   const [moveTo, setMoveTo] = useState<Square | null>(null);
   const [showPromotionDialog, setShowPromotionDialog] = useState(false);
-  const [rightClickedSquares, setRightClickedSquares] = useState({});
-  const [moveSquares, setMoveSquares] = useState({});
-  const [optionSquares, setOptionSquares] = useState({});
+  const [rightClickedSquares, setRightClickedSquares] = useState<
+    Record<string, any>
+  >({});
+  const [moveSquares, setMoveSquares] = useState<Record<string, any>>({}); // Kept for consistency, though not explicitly used in new logic
+  const [optionSquares, setOptionSquares] = useState<Record<string, any>>({});
+  const [moveHistory, setMoveHistory] = useState<string[]>([]);
+  const [currentEvaluation, setCurrentEvaluation] = useState<string | null>(
+    null,
+  );
+  const [lastMoveSquares, setLastMoveSquares] = useState<Record<string, any>>(
+    {},
+  );
 
-  function isPieceOnSquare(square: Square): boolean {
-    const piece = game.get(square);
-    return !(piece === null);
-  }
+  // Effect to handle external position changes
+  useEffect(() => {
+    const newFen = props.position === 'start' ? undefined : props.position;
+    const newGameInstance = new Chess(newFen);
+    setGame(newGameInstance);
+    setMoveHistory([]);
+    setCurrentEvaluation(null);
+    setMoveFrom('');
+    setMoveTo(null);
+    setOptionSquares({});
+    setRightClickedSquares({});
+    setShowPromotionDialog(false);
+    setLastMoveSquares({}); // Clear last move highlight
+  }, [props.position]);
 
-  function getPieceOnSquare(square: Square): string {
-    const piece = game.get(square);
-    if (piece) {
-      return piece.type;
-    }
-    return '';
-  }
+  // Effect for updating evaluation (mocked)
+  useEffect(() => {
+    const currentFen = game.fen();
+    setCurrentEvaluation('Calculating...');
 
-  function getPieceColorOnSquare(square: Square): string | null {
-    const piece = game.get(square);
-    if (piece) {
-      return piece.color;
-    }
-    return null;
-  }
+    const timerId = setTimeout(() => {
+      const mockEvalRaw = (Math.random() * 5 - 2.5).toFixed(2); // e.g., -2.50 to +2.50
+      const displayEval =
+        parseFloat(mockEvalRaw) >= 0 ? `+${mockEvalRaw}` : mockEvalRaw;
+      setCurrentEvaluation(displayEval);
+    }, 1200); // Simulate engine processing time
 
-  function getPieceTypeOnSquare(square: Square): string {
-    const piece = game.get(square);
-    if (piece) {
-      return piece.type;
-    }
-    return '';
-  }
+    return () => {
+      clearTimeout(timerId);
+    };
+  }, [game.fen()]); // Re-run when FEN changes
 
-  function findLegalMoveSquares(square: Square): string[] {
-    const piece = getPieceOnSquare(square);
-    const pieceColor = getPieceColorOnSquare(square);
-    const pieceType = getPieceTypeOnSquare(square);
-    if (!piece) {
-      return [];
-    }
-
-    if (!pieceColor || !pieceType) {
-      return [];
-    }
-
-    const moves = game.moves({
-      square,
-      verbose: true,
-    });
-    const legalMoves = moves.filter((move: any) => {
-      const movePiece = game.get(move.to) || null;
-      if (movePiece) {
-        return movePiece.color !== pieceColor;
-      } else {
-        return true;
-      }
-    });
-    return legalMoves.map((move: any) => move.to);
-  }
-
-  function isWhitePiece(square: Square): boolean {
-    return getPieceColorOnSquare(square) === 'w';
-  }
-
-  function isBlackPiece(square: Square): boolean {
-    return getPieceColorOnSquare(square) === 'b';
-  }
-
-  function isPawn(square: Square): boolean {
-    return getPieceTypeOnSquare(square) === 'p';
-  }
-
-  function isKnight(square: Square): boolean {
-    return getPieceTypeOnSquare(square) === 'n';
-  }
-
-  function isBishop(square: Square): boolean {
-    return getPieceTypeOnSquare(square) === 'b';
-  }
-
-  function isRook(square: Square): boolean {
-    return getPieceTypeOnSquare(square) === 'r';
-  }
-
-  function isQueen(square: Square): boolean {
-    return getPieceTypeOnSquare(square) === 'q';
-  }
-
-  function isKing(square: Square): boolean {
-    return getPieceTypeOnSquare(square) === 'k';
-  }
-
-  function hasValidMove(square: Square): boolean {
-    const piece = game.get(square);
-    if (!piece) {
-      return false;
-    }
-    const pieceColor = getPieceColorOnSquare(square);
-    const pieceType = getPieceTypeOnSquare(square);
-    const moves = game.moves({
-      square,
-      verbose: true,
-    });
-    const legalMoves = moves.filter((move: any) => {
-      const movePiece = game.get(move.to) || null;
-      if (movePiece) {
-        return getPieceColorOnSquare(move.to) !== pieceColor;
-      } else {
-        return true;
-      }
-    });
-    return legalMoves.length > 0;
-  }
-
-  function isPromotionMove(square: Square): boolean {
-    const piece = game.get(square);
-    if (!piece) {
-      return false;
-    }
-
-    // A white pawn can promote on rank 8/black on rank 1
-    const isWhitePromotion = isWhitePiece(square) && square[1] === '8';
-    const isBlackPromotion = isBlackPiece(square) && square[1] === '1';
-
-    // A promotion move is a pawn that has reached the last rank
-    return isPawn(square) && (isWhitePromotion || isBlackPromotion);
+  function getSafeMoves(square: Square): Move[] {
+    const moves = game.moves({ square, verbose: true });
+    return moves as Move[];
   }
 
   function onSquareClick(square: Square) {
     setRightClickedSquares({});
 
-    const currentSquare = square as string;
-    const piece = getPieceOnSquare(square);
-    const pieceColor = getPieceColorOnSquare(square);
-    const pieceType = getPieceTypeOnSquare(square);
-
-    // to square
-    if (!moveTo) {
-      // check if valid move before showing dialog
-      if (!hasValidMove(square)) {
-        return;
+    if (!moveFrom) {
+      // First click (selecting a piece to move)
+      const piece = game.get(square);
+      if (piece && piece.color === game.turn()) {
+        // Check if it's the current player's piece
+        setMoveFrom(square);
+        const moves = getSafeMoves(square);
+        const newOptionSquares: Record<string, any> = {};
+        moves.forEach((move) => {
+          newOptionSquares[move.to] = {
+            background:
+              game.get(move.to) && game.get(move.to)?.color !== piece.color
+                ? 'radial-gradient(circle, rgba(0,0,0,.1) 85%, transparent 85%)'
+                : 'radial-gradient(circle, rgba(0,0,0,.1) 25%, transparent 25%)',
+            borderRadius: '50%',
+          };
+        });
+        setOptionSquares(newOptionSquares);
       }
+      return;
+    }
 
-      // valid move
-      setMoveTo(square);
-
-      // if promotion move
-      if (isPromotionMove(square)) {
-        // show promotion dialog
-        setShowPromotionDialog(true);
-        return;
-      }
-
-      // is normal move
-      const gameCopy: any = {
-        ...game,
-      };
-      const move = gameCopy.move({
-        from: moveFrom,
-        to: square,
-        promotion: 'q',
-      });
-
-      setGame(gameCopy);
+    // Second click (selecting a destination square)
+    const pieceToMove = game.get(moveFrom);
+    if (!pieceToMove) {
       setMoveFrom('');
-      setMoveTo(null);
       setOptionSquares({});
       return;
     }
+
+    // Check if the move is a promotion
+    // A pawn move to the 1st or 8th rank
+    if (
+      pieceToMove.type === 'p' &&
+      ((pieceToMove.color === 'w' &&
+        (moveFrom as string)[1] === '7' &&
+        square[1] === '8') ||
+        (pieceToMove.color === 'b' &&
+          (moveFrom as string)[1] === '2' &&
+          square[1] === '1'))
+    ) {
+      // Check if the move is legal before showing promotion dialog
+      const isLegalPromotionMove = getSafeMoves(moveFrom).some(
+        (m) => m.to === square && m.flags.includes('p'),
+      );
+      if (isLegalPromotionMove) {
+        setMoveTo(square); // react-chessboard uses this for promotion
+        setShowPromotionDialog(true);
+        setOptionSquares({}); // Clear options, next action is promotion
+        // Move will be made in onPromotionPieceSelect
+        return;
+      } else {
+        // Illegal promotion attempt, reset
+        setMoveFrom('');
+        setMoveTo(null);
+        setOptionSquares({});
+        return;
+      }
+    }
+
+    // Attempt normal move
+    const newGame = new Chess(game.fen());
+    const moveResult = newGame.move({
+      from: moveFrom,
+      to: square,
+      promotion: 'q',
+    }); // 'q' is default for non-promotions
+
+    if (moveResult) {
+      setGame(newGame);
+      setMoveHistory((prev) => [...prev, moveResult.san]);
+      setLastMoveSquares({
+        // Highlight last move
+        [moveResult.from]: { backgroundColor: 'rgba(255, 255, 0, 0.4)' },
+        [moveResult.to]: { backgroundColor: 'rgba(255, 255, 0, 0.4)' },
+      });
+      if (props.onMove) {
+        props.onMove({
+          from: moveFrom as Square,
+          to: square,
+          piece: pieceToMove.type,
+          san: moveResult.san,
+          fen: newGame.fen(),
+        });
+      }
+    }
+    // Reset for next move
+    setMoveFrom('');
+    setMoveTo(null);
+    setOptionSquares({});
   }
 
-  function onPromotionPieceSelect(piece: string[]) {
-    // if no piece passed then user has cancelled dialog, don't make move and reset
-    if (piece) {
-      const gameCopy: any = {
-        ...game,
-      };
-      gameCopy.move({
+  function onPromotionPieceSelect(piece?: PieceSymbol) {
+    if (piece && moveFrom && moveTo) {
+      const newGame = new Chess(game.fen());
+      const pieceToMoveDetails = game.get(moveFrom); // For onDrop
+
+      const moveResult = newGame.move({
         from: moveFrom,
-        to: moveTo || '',
-        promotion: piece[1].toLowerCase() ?? 'q',
+        to: moveTo,
+        promotion: piece,
       });
-      setGame(gameCopy);
+
+      if (moveResult) {
+        setGame(newGame);
+        setMoveHistory((prev) => [...prev, moveResult.san]);
+        setLastMoveSquares({
+          // Highlight last move
+          [moveResult.from]: { backgroundColor: 'rgba(255, 255, 0, 0.4)' },
+          [moveResult.to]: { backgroundColor: 'rgba(255, 255, 0, 0.4)' },
+        });
+        if (props.onMove && pieceToMoveDetails) {
+          props.onMove({
+            from: moveFrom as Square,
+            to: moveTo,
+            piece: pieceToMoveDetails.type,
+            san: moveResult.san,
+            fen: newGame.fen(),
+          });
+        }
+      }
     }
+    // Reset states after promotion attempt or cancellation
     setMoveFrom('');
     setMoveTo(null);
     setShowPromotionDialog(false);
     setOptionSquares({});
-    return true;
+    return true; // Required by react-chessboard's onPromotionPieceSelect
   }
 
-  function onSquareRightClick(square: string | number) {
+  function onSquareRightClick(square: Square) {
     const colour = 'rgba(0, 0, 255, 0.4)';
     setRightClickedSquares({
       ...rightClickedSquares,
       [square]: {
         backgroundColor: colour,
-        borderRadius: '50%',
-        boxShadow: `0 0 10px ${colour}`,
+        // borderRadius: '50%', // Optional: keep or remove based on desired style
+        // boxShadow: `0 0 10px ${colour}`, // Optional
       },
     });
   }
 
+  // The old handleUserMove is removed as move history is updated directly.
+  // const handleUserMove = useCallback(async (from: string, to: string) => {
+  // setMoveHistory(prev => [...prev, `${from}-${to}`]);
+  // }, []);
+
   return (
-    <div>
-      <Chessboard
-        id="ClickToMove"
-        animationDuration={200}
-        arePiecesDraggable={false}
-        position={game.fen()}
-        onSquareClick={onSquareClick}
-        onSquareRightClick={onSquareRightClick}
-        customBoardStyle={{
-          borderRadius: '4px',
-          boxShadow: '0 2px 10px rgba(0, 0, 0, 0.5)',
-        }}
-        customSquareStyles={{
-          ...moveSquares,
-          ...optionSquares,
-          ...rightClickedSquares,
-        }}
-        promotionToSquare={moveTo}
-        showPromotionDialog={showPromotionDialog}
-      />
+    <div className="flex flex-col items-center">
+      <div>
+        <Chessboard
+          id="ClickToMoveChessBoard" // Changed ID for clarity
+          animationDuration={200}
+          arePiecesDraggable={false} // Using click-to-move
+          position={game.fen()}
+          onSquareClick={onSquareClick}
+          onSquareRightClick={onSquareRightClick}
+          onPromotionPieceSelect={onPromotionPieceSelect}
+          promotionToSquare={moveTo}
+          showPromotionDialog={showPromotionDialog}
+          customBoardStyle={{
+            borderRadius: '4px',
+            boxShadow: '0 2px 10px rgba(0, 0, 0, 0.5)',
+          }}
+          customSquareStyles={{
+            ...moveSquares, // Kept for potential future use
+            ...optionSquares,
+            ...rightClickedSquares,
+            ...lastMoveSquares, // Added for last move highlight
+          }}
+        />
+      </div>
+      <div className="w-full max-w-md mt-4">
+        <h3 className="text-lg font-semibold mb-2">Move History</h3>
+        <MoveHistory moveHistory={moveHistory} />
+      </div>
+      {/* Corrected JSX structure for Evaluation section */}
+      <div className="w-full max-w-md mt-2">
+        <h3 className="text-lg font-semibold mb-1">Evaluation</h3>
+        <p className="text-sm text-gray-700">
+          {currentEvaluation !== null ? currentEvaluation : 'N/A'}
+        </p>
+      </div>
     </div>
   );
 }
+
+// Removed helper functions like isPieceOnSquare, getPieceOnSquare etc. as they are not directly
+// used in the refactored logic or are encapsulated within chess.js instance (game.get, game.moves)
+// If any specific checks are needed, they can be done via game instance.
+// For example, game.get(square) returns piece details or null.
+// game.moves({ square, verbose: true }) gives all legal moves from a square.
