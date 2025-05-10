@@ -2,10 +2,10 @@
 import { ChessEngine } from './ChessEngine';
 import { VariationLine, PgnMove } from '@/types/pgnTypes';
 import { DrillStateManager } from './DrillStateManager';
-import { ChessPieceColor } from '@/enums/ChessPieceColor';
+import { ChessPieceColor } from '@/_enums/ChessPieceColor';
 import { Chess } from 'chess.js';
-import { ChessSquare } from '@/enums/ChessSquare';
-import { PromotionPiece } from '@/enums/ChessPiece';
+import { ChessSquare } from '@/_enums/ChessSquare';
+import { PromotionPiece } from '@/_enums/ChessPiece';
 
 export class DrillSession {
   private chessEngine: ChessEngine;
@@ -92,7 +92,12 @@ export class DrillSession {
         typeof moveInput.to === 'string' &&
         expectedMove.to === moveInput.to) ||
       (typeof expectedMove.move === 'string' &&
-        expectedMove.move === this._moveToSan({ from: moveInput.from.toString(), to: moveInput.to.toString(), promotion: moveInput.promotion })); // Use DrillSession's own SAN conversion
+        expectedMove.move ===
+          this._moveToSan({
+            from: moveInput.from.toString(),
+            to: moveInput.to.toString(),
+            promotion: moveInput.promotion,
+          })); // Use DrillSession's own SAN conversion
 
     if (!isCorrect) {
       return {

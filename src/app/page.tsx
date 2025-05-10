@@ -1,7 +1,7 @@
 'use client';
 import { ChessBoard } from "@/components/ChessBoard";
-import PGNUploader from "@/components/PGNUploader"; // Added import
-import { useState } from "react"; // Added import
+import PGNUploader from '@/components/PGNUploader';
+import { useState } from 'react';
 
 export default function Home() {
   const [pgn, setPgn] = useState<string | null>(null); // Added state for PGN content
@@ -15,7 +15,6 @@ export default function Home() {
   return (
     <div className="flex flex-col items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
       <PGNUploader onPgnLoad={handlePgnLoad} />{' '}
-      {/* Added PGNUploader component */}
       <ChessBoard
         position="start"
         onDrop={(sourceSquare, targetSquare) => true}

@@ -1,4 +1,5 @@
 import { DrillStateManager } from './DrillStateManager';
+import {it, describe, expect} from '@jest/globals';
 
 describe('DrillStateManager', () => {
   const moves = [

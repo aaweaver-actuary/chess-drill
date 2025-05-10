@@ -4,9 +4,9 @@ import { ChessEngine } from './ChessEngine';
 import { VariationLine, PgnMove } from '@/types/pgnTypes';
 import { describe, test, expect, jest, beforeEach } from '@jest/globals';
 import { DrillStateManager } from './DrillStateManager';
-import { ChessPieceColor } from '@/enums/ChessPieceColor';
-import { ChessSquare } from '@/enums/ChessSquare';
-import { PromotionPiece } from '@/enums/ChessPiece';
+import { ChessPieceColor } from '@/_enums/ChessPieceColor';
+import { ChessSquare } from '@/_enums/ChessSquare';
+import { PromotionPiece } from '@/_enums/ChessPiece';
 
 // Mock ChessEngine
 jest.mock('./ChessEngine');
@@ -92,7 +92,7 @@ describe('DrillSession', () => {
     // @ts-ignore // Access private for test
     expect(drill.variation).toEqual(sampleVariation);
     // @ts-ignore // Access private for test
-    expect(drill.userColor).toBe(ChessPieceColor.White);
+    expect(drill.userColor).toBe(ChessPieceColor.White.valueOf());
     // Use stateManager for move index
     expect(drill.stateManager.getCurrentMoveIndex()).toBe(0);
   });

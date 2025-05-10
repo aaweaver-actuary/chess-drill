@@ -1,8 +1,8 @@
 // src/types/pgnTypes.ts
 
-import { PromotionPiece } from "@/enums/ChessPiece";
-import { ChessSquare } from "@/enums/ChessSquare";
-import { Chess } from "chess.js";
+import { PromotionPiece } from '@/_enums/ChessPiece';
+import { ChessSquare } from '@/_enums/ChessSquare';
+import { Chess } from 'chess.js';
 
 // Define a type for parsed PGN moves, including recursive RAVs
 export interface PgnMove {
@@ -40,5 +40,14 @@ export interface VariationLine {
 export interface MoveForVariationKey {
   move: string;
   // Allow other properties to exist on the object, but they won't be used for the key.
+  [key: string]: any;
+}
+
+export interface Variation {
+  moves: PgnMove[];
+  tags?: Record<string, string>;
+  startingFEN?: string;
+  result?: string;
+  // Other properties that might be present in parsed PGN
   [key: string]: any;
 }

@@ -1,7 +1,7 @@
 import { PgnDataManager } from '@/utils/PgnDataManager';
 import { ChessEngine } from '@/utils/ChessEngine';
 import { StatsStore } from '@/utils/StatsStore';
-import { ChessPieceColor } from '@/enums/ChessPieceColor';
+import { ChessPieceColor } from '@/_enums/ChessPieceColor';
 import { DrillSession } from '@/utils/DrillSession';
 import {
   ParsedPgn,
@@ -9,6 +9,8 @@ import {
   VariationLine,
   MoveForVariationKey,
 } from '@/types/pgnTypes';
+import { ChessSquare } from '@/_enums/ChessSquare';
+import { PromotionPiece } from '@/_enums/ChessPiece';
 
 export class TrainingOrchestrator {
   private pgnDataManager: PgnDataManager;
@@ -59,7 +61,7 @@ export class TrainingOrchestrator {
     if (!currentVariation) return '';
     // Map moves to { move: string } for compatibility with MoveForVariationKey
     return this.pgnDataManager.generateVariationKey(
-      currentVariation.moves.map((m) => ({ move: String(m.move) }))
+      currentVariation.moves.map((m) => ({ move: String(m.move) })),
     );
   }
 
@@ -161,7 +163,9 @@ export class TrainingOrchestrator {
     //   this._drillSession.playOpponentMoveIfApplicable(); // A hypothetical method
     // }
   }
-  determineUserColor(selectedVariation: VariationLine): ChessPieceColor | undefined {
+  determineUserColor(
+    selectedVariation: VariationLine,
+  ): ChessPieceColor | undefined {
     throw new Error('Method not implemented.');
   }
 
@@ -179,9 +183,9 @@ export class TrainingOrchestrator {
   }
 
   public handleUserMove(moveInput: {
-    from: string;
-    to: string;
-    promotion?: string;
+    from: ChessSquare;
+    to: ChessSquare;
+    promotion: PromotionPiece;
   }): {
     isValid: boolean; // Changed from success to isValid for clarity with DrillSession
     isCorrectMove: boolean; // Added
@@ -220,7 +224,9 @@ export class TrainingOrchestrator {
       isVariationComplete: result.isComplete,
       nextFen: result.newFen,
       opponentMove: result.opponentMove,
-      expectedMoveSan: expectedMoveBeforeUserAction?.move ? String(expectedMoveBeforeUserAction.move) : undefined, // Return the SAN of the move that was expected
+      expectedMoveSan: expectedMoveBeforeUserAction?.move
+        ? String(expectedMoveBeforeUserAction.move)
+        : undefined, // Return the SAN of the move that was expected
     };
   }
 

@@ -6,33 +6,22 @@ import {
   VariationLine,
   MoveForVariationKey,
 } from '@/types/pgnTypes';
-import {
-  describe,
-  test,
-  expect,
-  jest,
-  beforeEach,
-  afterEach,
-} from '@jest/globals';
 import { PgnDataManager } from '@/utils/PgnDataManager';
 import { ChessEngine } from '@/utils/ChessEngine';
 import { StatsStore } from '@/utils/StatsStore';
 import { DrillSession } from '@/utils/DrillSession';
-import { Chess } from 'chess.js';
-import { ChessboardDnDProvider } from 'react-chessboard';
-import { ChessPieceColor } from '@/enums/ChessPieceColor';
+import { ChessPiece, ChessPieceColor } from '@/enums';
+import setupMocks from '@/utils/setupMocks';
 
-// Mock PgnDataManager
 jest.mock('@/utils/PgnDataManager');
-
-// Mock ChessEngine
 jest.mock('@/utils/ChessEngine');
-
-// Mock StatsStore
 jest.mock('@/utils/StatsStore');
-
-// Mock DrillSession
 jest.mock('@/utils/DrillSession');
+
+// Setup mocks for PgnDataManager, ChessEngine, StatsStore, and DrillSession
+beforeEach(() => {
+  const mocks = setupMocks();
+});
 
 // Helper function to create a mock PgnDataManager instance
 const createMockPgnDataManager = () => ({
@@ -64,12 +53,12 @@ const createMockDrillSessionInstance = () => ({
   }),
   isDrillComplete: jest.fn().mockReturnValue(false),
   getVariation: jest.fn().mockReturnValue(undefined),
-  getUserColor: jest.fn().mockReturnValue('w'),
+  getUserColor: jest.fn().mockReturnValue(ChessPieceColor.White),
 });
 
 describe('TrainingOrchestrator', () => {
-  let MockPgnDataManager: jest.MockedClass<typeof PgnDataManager>; // For the class mock
-  let mockPgnDataManagerInstance: jest.Mocked<PgnDataManager>; // For the instance mock
+  let MockPgnDataManager: jest.MockedClass<typeof PgnDataManager>;
+  let mockPgnDataManagerInstance: jest.Mocked<PgnDataManager>;
   let MockChessEngine: jest.MockedClass<typeof ChessEngine>;
   let MockStatsStore: jest.MockedClass<typeof StatsStore>;
   let mockEngineInstance: jest.Mocked<ChessEngine>;
@@ -81,10 +70,6 @@ describe('TrainingOrchestrator', () => {
   let sampleVariationLine: VariationLine;
 
   beforeEach(() => {
-    // Clear mock calls before each test
-    // mockParse.mockClear(); // VariationParser is no longer directly used or mocked here
-    // mockParse.mockReturnValue(undefined); // VariationParser is no longer directly used or mocked here
-
     // Setup PgnDataManager mock
     MockPgnDataManager = PgnDataManager as jest.MockedClass<
       typeof PgnDataManager
@@ -103,14 +88,18 @@ describe('TrainingOrchestrator', () => {
       load: jest.fn(), // Mock the load method
       loadPgn: jest.fn(),
       makeMove: jest.fn(),
-      getHistory: jest.fn().mockReturnValue([]),
+      getHistory: jest
+        .fn()
+        .mockReturnValue(
+          [] as unknown as ReturnType<ChessEngine['getHistory']>,
+        ),
       game: {
         fen: jest
           .fn()
           .mockReturnValue(
             'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
           ),
-        turn: jest.fn().mockReturnValue('w'),
+        turn: jest.fn().mockReturnValue(ChessPieceColor.White),
         // Add other chess.js game properties/methods if needed by TrainingOrchestrator
       },
     } as unknown as jest.Mocked<ChessEngine>; // Use unknown for type assertion flexibility
@@ -139,44 +128,54 @@ describe('TrainingOrchestrator', () => {
     // Setup a default mock implementation for ChessEngine for tests that need it
     const mockMakeMove = jest.fn(
       (move: string | { from: string; to: string; promotion?: string }) => {
-        // Return a dummy Move object as expected by ChessEngine.makeMove
-        return {
+        const dummyMoveObject = {
           from: typeof move === 'string' ? move.slice(0, 2) : move.from,
           to: typeof move === 'string' ? move.slice(2, 4) : move.to,
-          san: ChessPiece.
+          san: '',
           flags: '',
-          piece: 'p',
-          color: 'w',
-        } as any; // Use 'as any' to satisfy the Move type for testing
+          piece: ChessPiece.Pawn,
+          color: ChessPieceColor.White,
+        } as any;
+        // Return a dummy Move object as expected by ChessEngine.makeMove
+        return dummyMoveObject;
       },
     );
-    const mockGetFen = jest
+    const mockGetFen: jest.Mock = jest
       .fn()
       .mockReturnValue(
         'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
       ); // Default FEN
-    const mockTurn = jest.fn().mockReturnValue('w'); // Default turn
-    (ChessEngine as jest.MockedClass<typeof ChessEngine>).mockImplementation(() => ({
-      makeMove: mockMakeMove,
-      game: {
-        fen: mockGetFen,
-        turn: mockTurn,
-        // Add other methods like load, pgn, etc., if autoAdvanceToUserTurn or other logic needs them
-        load: jest.fn(),
-        pgn: jest.fn(),
-        history: jest.fn().mockReturnValue([]),
-        validateFen: jest.fn().mockReturnValue({ valid: true }),
-        loadPgn: jest.fn(),
-      },
-      reset: jest.fn(),
-      loadPgn: jest.fn(), // Mock for ChessEngine's loadPgn
-      getHistory: jest.fn().mockReturnValue([]),
-      getCurrentFen: mockGetFen, // If ChessEngine has its own getCurrentFen
-    }));
+    const mockTurn: jest.Mock = jest
+      .fn()
+      .mockReturnValue(ChessPieceColor.White); // Default turn
+    (ChessEngine as jest.MockedClass<typeof ChessEngine>).mockImplementation(
+      () => ({
+        makeMove: mockMakeMove,
+        game: {
+          fen: mockGetFen,
+          turn: mockTurn,
+          // Add other methods like load, pgn, etc., if autoAdvanceToUserTurn or other logic needs them
+          load: jest.fn(),
+          pgn: jest.fn(),
+          history: jest.fn((options?: { verbose: boolean }) => {
+            if (options && options.verbose) {
+              return [];
+            }
+            return [];
+          }),
+          validateFen: jest.fn().mockReturnValue({ valid: true }),
+          loadPgn: jest.fn(),
+        },
+        reset: jest.fn(),
+        loadPgn: jest.fn(), // Mock for ChessEngine's loadPgn
+        getHistory: jest.fn().mockReturnValue([]),
+        getCurrentFen: mockGetFen, // If ChessEngine has its own getCurrentFen
+      }),
+    );
 
     MockDrillSession = DrillSession as jest.MockedClass<typeof DrillSession>;
     mockDrillSessionInstance =
-      createMockDrillSessionInstance() as jest.Mocked<DrillSession>;
+      createMockDrillSessionInstance() as unknown as jest.Mocked<DrillSession>;
 
     // Sample data for tests
     samplePgnData = {
@@ -197,7 +196,9 @@ describe('TrainingOrchestrator', () => {
     expect(MockPgnDataManager).toHaveBeenCalledTimes(1); // Check PgnDataManager instantiation
     expect(MockChessEngine).toHaveBeenCalledTimes(1);
     expect(MockStatsStore).toHaveBeenCalledTimes(1);
+    // @ts-ignore access private member for test
     expect(orchestrator.statsStore).toBeDefined();
+    // @ts-ignore access private member for test
     expect(orchestrator.statsStore).toBeInstanceOf(MockStatsStore);
     // @ts-ignore access private member for test
     expect(orchestrator.pgnDataManager).toBeInstanceOf(MockPgnDataManager); // Check instance type
@@ -705,14 +706,18 @@ describe('TrainingOrchestrator', () => {
       orchestrator = new TrainingOrchestrator();
     });
 
-    test('should return "w" if the first move is a White move (e.g., e4)', () => {
+    test('should return ChessPiece.White if the first move is a White move (e.g., e4)', () => {
       const variation = { moves: [{ move: 'e4' }, { move: 'e5' }] };
-      expect(orchestrator.determineUserColor(variation)).toBe('w');
+      expect(orchestrator.determineUserColor(variation)).toBe(
+        ChessPieceColor.White,
+      );
     });
 
-    test('should return "b" if the first move is a Black move (e.g., ...e5)', () => {
+    test('should return ChessPiece.Black if the first move is a Black move (e.g., ...e5)', () => {
       const variation = { moves: [{ move: '...e5' }, { move: 'Nf3' }] };
-      expect(orchestrator.determineUserColor(variation)).toBe('b');
+      expect(orchestrator.determineUserColor(variation)).toBe(
+        ChessPieceColor.Black,
+      );
     });
 
     test('should return undefined if moves array is empty', () => {
@@ -756,14 +761,14 @@ describe('TrainingOrchestrator', () => {
     });
 
     test('should create and store a DrillSession instance', () => {
-      orchestrator.startTrainingSession('w');
+      orchestrator.startTrainingSession(ChessPieceColor.White);
       expect(MockDrillSession).toHaveBeenCalledTimes(1);
       // @ts-ignore
       expect(orchestrator._drillSession).toBe(mockDrillSessionInstance);
     });
 
     test('should instantiate DrillSession with selected variation, user color, and starting FEN', () => {
-      const determinedColor = 'w';
+      const determinedColor = ChessPieceColor.White;
       jest
         .spyOn(orchestrator, 'determineUserColor')
         .mockReturnValue(determinedColor);
@@ -787,7 +792,7 @@ describe('TrainingOrchestrator', () => {
     });
 
     test('should use userPlaysAs color if provided, overriding determinedUserColor', () => {
-      const userPlaysAsColor = 'b';
+      const userPlaysAsColor = ChessPieceColor.Black;
       jest
         .spyOn(orchestrator, 'selectRandomVariation')
         .mockReturnValue(sampleVariationLine);
@@ -833,13 +838,15 @@ describe('TrainingOrchestrator', () => {
       jest
         .spyOn(orchestrator, 'selectRandomVariation')
         .mockReturnValue(variations[1]);
-      jest.spyOn(orchestrator, 'determineUserColor').mockReturnValue('w');
+      jest
+        .spyOn(orchestrator, 'determineUserColor')
+        .mockReturnValue(ChessPieceColor.White);
 
       orchestrator.startTrainingSession();
 
-      expect(orchestrator._currentVariation).toBe(variations[1]);
+      expect((orchestrator as any)._currentVariation).toBe(variations[1]);
       // @ts-ignore
-      expect(orchestrator._userColor).toBe('w');
+      expect(orchestrator._userColor).toBe(ChessPieceColor.White);
       // @ts-ignore
       expect(orchestrator._engine).toBeDefined();
     });
@@ -878,9 +885,9 @@ describe('TrainingOrchestrator', () => {
       mockPgnDataManagerInstance.getParsedPgn.mockReturnValue(mockParsedPgn);
       const variation = {
         moves: [
-          { move: 'e4' as any }, 
-          { move: 'e5' as any }, 
-          { move: 'Nf3' as any }
+          { move: 'e4' as any },
+          { move: 'e5' as any },
+          { move: 'Nf3' as any },
         ],
       };
       jest
@@ -889,7 +896,9 @@ describe('TrainingOrchestrator', () => {
       jest
         .spyOn(orchestrator, 'selectRandomVariation')
         .mockReturnValue(variation as any);
-      jest.spyOn(orchestrator, 'determineUserColor').mockReturnValue(ChessPieceColor.Black);
+      jest
+        .spyOn(orchestrator, 'determineUserColor')
+        .mockReturnValue(ChessPieceColor.Black);
 
       orchestrator.startTrainingSession();
 
@@ -956,7 +965,11 @@ describe('TrainingOrchestrator', () => {
 
   describe('handleUserMove', () => {
     let orchestrator: TrainingOrchestrator;
-    const userMoveInput = { from: 'e2', to: 'e4' };
+    const userMoveInput = {
+      from: ChessSquare.E2,
+      to: ChessSquare.E4,
+      promotion: PromotionPiece.NoPromotion,
+    };
 
     beforeEach(() => {
       orchestrator = new TrainingOrchestrator();

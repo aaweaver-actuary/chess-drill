@@ -1,5 +1,5 @@
 import sanToSquare from '@/utils/sanToSquare';
-import { ChessSquare } from '@/enums/ChessSquare';
+import { ChessSquare } from '@/_enums/ChessSquare';
 import { describe, test, expect } from '@jest/globals';
 
 describe('sanToSquare', () => {

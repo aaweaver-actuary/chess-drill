@@ -5,9 +5,13 @@ import {
   VariationLine,
   PgnMove,
   MoveForVariationKey,
+  Variation,
 } from '@/types/pgnTypes';
 
 export class PgnDataManager {
+  static generateVariationKey(arg0: never[]): any {
+    throw new Error('Method not implemented.');
+  }
   private variationParser: VariationParser;
   private parsedPgn: ParsedPgn | null = null;
   private pgnString: string | null = null;
@@ -62,7 +66,9 @@ export class PgnDataManager {
         // Remove 'rav' from the move copy for the flattened line
         delete move.rav;
 
-        if (move.rav && move.rav.length > 0) {
+        const ravArray: PgnMove[] = move.rav || [];
+
+        if (ravArray.length > 0) {
           // Process main line first
           const mainLineContinuation = [...currentLineContinuation];
           if (i + 1 < currentMoves.length) {
@@ -83,7 +89,7 @@ export class PgnDataManager {
           }
 
           // Then process all variations (RAVs) from this move
-          move.rav.forEach((variation) => {
+          ravArray.forEach((variation) => {
             recurse(variation.moves, currentLineContinuation);
           });
         } else if (i === currentMoves.length - 1) {
@@ -125,7 +131,12 @@ export class PgnDataManager {
     return [
       {
         id: 'var1',
-        moves: ['e4', 'e5', 'Nf3', 'Nc6'],
+        moves: [
+          { move: 'e4' },
+          { move: 'e5' },
+          { move: 'Nf3' },
+          { move: 'Nc6' },
+        ],
         description: 'Main line opening',
       },
     ];

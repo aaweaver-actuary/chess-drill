@@ -1,5 +1,4 @@
-import { StatsKey, StatsEntry } from "@/types/StatsStore";
-
+import { StatsKey, StatsEntry } from '@/types/StatsStore';
 
 /**
  * StatsStore tracks attempts and successes keyed by variation.

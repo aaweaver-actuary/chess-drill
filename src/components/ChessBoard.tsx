@@ -4,7 +4,7 @@ import { Chess, PieceSymbol, Square, Move } from 'chess.js'; // Added Move type
 // import { get } from 'http'; // Removed unused import
 import React, { useState, useEffect, useCallback } from 'react';
 import { Chessboard } from 'react-chessboard';
-import { MoveHistory } from './MoveHistory';
+// import { MoveHistory } from './MoveHistory';
 
 interface ChessBoardProps {
   position: string; // FEN string or "start"
@@ -171,29 +171,35 @@ export function ChessBoard(props: ChessBoardProps): React.JSX.Element {
     setOptionSquares({});
   }
 
-  function onPromotionPieceSelect(piece?: PieceSymbol) {
-    if (piece && moveFrom && moveTo) {
+  function onPromotionPieceSelect(
+    piece?: string,
+    promoteFromSquare?: Square,
+    promoteToSquare?: Square
+  ): boolean {
+    // react-chessboard passes piece as "wQ", "bN", etc.
+    // We need to extract the piece symbol ("q", "n", etc.)
+    if (piece && promoteFromSquare && promoteToSquare) {
+      const pieceSymbol = piece[1]?.toLowerCase() as PieceSymbol; // "wQ" -> "q"
       const newGame = new Chess(game.fen());
-      const pieceToMoveDetails = game.get(moveFrom); // For onDrop
+      const pieceToMoveDetails = game.get(promoteFromSquare);
 
       const moveResult = newGame.move({
-        from: moveFrom,
-        to: moveTo,
-        promotion: piece,
+        from: promoteFromSquare,
+        to: promoteToSquare,
+        promotion: pieceSymbol,
       });
 
       if (moveResult) {
         setGame(newGame);
         setMoveHistory((prev) => [...prev, moveResult.san]);
         setLastMoveSquares({
-          // Highlight last move
           [moveResult.from]: { backgroundColor: 'rgba(255, 255, 0, 0.4)' },
           [moveResult.to]: { backgroundColor: 'rgba(255, 255, 0, 0.4)' },
         });
         if (props.onMove && pieceToMoveDetails) {
           props.onMove({
-            from: moveFrom as Square,
-            to: moveTo,
+            from: promoteFromSquare as Square,
+            to: promoteToSquare,
             piece: pieceToMoveDetails.type,
             san: moveResult.san,
             fen: newGame.fen(),
@@ -201,12 +207,11 @@ export function ChessBoard(props: ChessBoardProps): React.JSX.Element {
         }
       }
     }
-    // Reset states after promotion attempt or cancellation
     setMoveFrom('');
     setMoveTo(null);
     setShowPromotionDialog(false);
     setOptionSquares({});
-    return true; // Required by react-chessboard's onPromotionPieceSelect
+    return true;
   }
 
   function onSquareRightClick(square: Square) {
@@ -253,7 +258,11 @@ export function ChessBoard(props: ChessBoardProps): React.JSX.Element {
       </div>
       <div className="w-full max-w-md mt-4">
         <h3 className="text-lg font-semibold mb-2">Move History</h3>
-        <MoveHistory moveHistory={moveHistory} />
+        <ul className="list-decimal list-inside text-sm">
+          {moveHistory.map((move, idx) => (
+            <li key={idx}>{move}</li>
+          ))}
+        </ul>
       </div>
       {/* Corrected JSX structure for Evaluation section */}
       <div className="w-full max-w-md mt-2">

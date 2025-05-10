@@ -1,4 +1,4 @@
-import { ChessSquare } from "@/enums/ChessSquare";
+import { ChessSquare } from '@/_enums/ChessSquare';
 
 interface FileToIdx {
   [key: string]: number;
@@ -19,7 +19,7 @@ export default function sanToSquare(san: string): ChessSquare {
     f: 5,
     g: 6,
     h: 7,
-  }
+  };
   const fileChar = san.charAt(0).toLowerCase();
   const file = fileToIdx[fileChar];
   const rankChar = san.charAt(1);
@@ -30,5 +30,5 @@ export default function sanToSquare(san: string): ChessSquare {
   if (file < 0 || file > 7) {
     throw new Error(`Invalid file: ${fileChar}`);
   }
-  return file*8 + rank as ChessSquare;
+  return (file * 8 + rank) as ChessSquare;
 }
