@@ -72,10 +72,10 @@ describe('DrillSession', () => {
 
     sampleVariation = {
       moves: [
-        { move: ChessSquare.E4, from: ChessSquare.E2, to: ChessSquare.E4 }, // User (White)
-        { move: ChessSquare.E5, from: ChessSquare.E7, to: ChessSquare.E5 }, // Opponent (Black)
-        { move: ChessSquare.F3, from: ChessSquare.G1, to: ChessSquare.F3 }, // User (White)
-        { move: ChessSquare.C6, from: ChessSquare.B8, to: ChessSquare.C6 }, // Opponent (Black)
+        { move: 'e4', from: ChessSquare.E2, to: ChessSquare.E4 }, // User (White)
+        { move: 'e5', from: ChessSquare.E7, to: ChessSquare.E5 }, // Opponent (Black)
+        { move: 'f3', from: ChessSquare.G1, to: ChessSquare.F3 }, // User (White)
+        { move: 'c6', from: ChessSquare.B8, to: ChessSquare.C6 }, // Opponent (Black)
       ],
       tags: { Event: 'Test Drill' },
       startingFEN: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', // Standard start
@@ -110,13 +110,11 @@ describe('DrillSession', () => {
     const mockGetCurrentMoveIndex = jest
       .fn()
       .mockReturnValue(ChessPieceColor.White);
-    const mockGetExpectedMove = jest
-      .fn()
-      .mockReturnValue({
-        move: ChessSquare.E4,
-        from: ChessSquare.E2,
-        to: ChessSquare.E4,
-      });
+    const mockGetExpectedMove = jest.fn().mockReturnValue({
+      move: ChessSquare.E4,
+      from: ChessSquare.E2,
+      to: ChessSquare.E4,
+    });
     (DrillStateManager as jest.Mock).mockImplementation(() => ({
       advance: mockAdvance,
       getCurrentMoveIndex: mockGetCurrentMoveIndex,
@@ -125,9 +123,7 @@ describe('DrillSession', () => {
       reset: jest.fn(),
     }));
     const sampleVariation = {
-      moves: [
-        { move: ChessSquare.E4, from: ChessSquare.E2, to: ChessSquare.E4 },
-      ],
+      moves: [{ move: 'e4', from: ChessSquare.E2, to: ChessSquare.E4 }],
       tags: {},
       startingFEN: undefined,
     };
@@ -225,7 +221,11 @@ describe('DrillSession', () => {
     test('should handle correct user move, make move on engine, and advance index', () => {
       mockTurn.mockReturnValue(ChessPieceColor.White); // User's turn (White)
       const drill = new DrillSession(sampleVariation, ChessPieceColor.White);
-      const userMoveInput = { from: ChessSquare.E2, to: ChessSquare.E4 };
+      const userMoveInput = {
+        from: ChessSquare.E2,
+        to: ChessSquare.E4,
+        promotion: PromotionPiece.NoPromotion,
+      };
       mockMakeMove.mockReturnValueOnce({
         san: 'e4',
         from: ChessSquare.E2,
@@ -265,7 +265,11 @@ describe('DrillSession', () => {
       drill.stateManager.reset();
       for (let i = 0; i < 2; i++) drill.stateManager.advance();
 
-      const finalUserMove = { from: ChessSquare.G1, to: ChessSquare.F3 };
+      const finalUserMove = {
+        from: ChessSquare.G1,
+        to: ChessSquare.F3,
+        promotion: PromotionPiece.NoPromotion,
+      };
       mockMakeMove.mockReturnValueOnce({
         san: 'Nf3',
         from: ChessSquare.G1,
@@ -303,7 +307,11 @@ describe('DrillSession', () => {
       };
       mockTurn.mockReturnValue(ChessPieceColor.White); // User's turn (White)
       const drill = new DrillSession(shortVariation, ChessPieceColor.White);
-      const userMoveInput = { from: ChessSquare.E2, to: ChessSquare.E4 };
+      const userMoveInput = {
+        from: ChessSquare.E2,
+        to: ChessSquare.E4,
+        promotion: PromotionPiece.NoPromotion,
+      };
       mockMakeMove.mockReturnValueOnce({
         san: 'e4',
         from: ChessSquare.E2,
@@ -327,7 +335,11 @@ describe('DrillSession', () => {
     test('should return success:false if engine fails to make a supposedly correct move', () => {
       mockTurn.mockReturnValue(ChessPieceColor.White); // User's turn (White)
       const drill = new DrillSession(sampleVariation, ChessPieceColor.White);
-      const userMoveInput = { from: ChessSquare.E2, to: ChessSquare.E4 };
+      const userMoveInput = {
+        from: ChessSquare.E2,
+        to: ChessSquare.E4,
+        promotion: PromotionPiece.NoPromotion,
+      };
       mockMakeMove.mockReturnValueOnce(null); // Simulate engine failure
       mockMoveToSan.mockReturnValueOnce('e4');
 
@@ -341,7 +353,11 @@ describe('DrillSession', () => {
     test("should handle scenario where opponent's scripted move is illegal", () => {
       mockTurn.mockReturnValue(ChessPieceColor.White); // User's turn (White)
       const drill = new DrillSession(sampleVariation, ChessPieceColor.White);
-      const userMoveInput = { from: ChessSquare.E2, to: ChessSquare.E4 };
+      const userMoveInput = {
+        from: ChessSquare.E2,
+        to: ChessSquare.E4,
+        promotion: PromotionPiece.NoPromotion,
+      };
       mockMakeMove.mockReturnValueOnce({
         san: 'e4',
         from: ChessSquare.E2,

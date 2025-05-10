@@ -5,7 +5,6 @@ import {
   VariationLine,
   PgnMove,
   MoveForVariationKey,
-  Variation,
 } from '@/types/pgnTypes';
 
 export class PgnDataManager {

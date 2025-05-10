@@ -6,13 +6,13 @@ import { Chess } from "chess.js";
 
 // Define a type for parsed PGN moves, including recursive RAVs
 export interface PgnMove {
-  move: ChessSquare;
+  move: string;
   from?: ChessSquare; // Starting square, e.g., 'e2'
   to?: ChessSquare; // Ending square, e.g., 'e4'
   promotion?: PromotionPiece;
   comment?: string;
   nag?: string[];
-  rav?: PgnRav[];
+  rav?: { moves: PgnMove[] }[];
   [key: string]: any; // For other potential properties from parser
 }
 
