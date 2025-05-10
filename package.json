@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "chess.js": "^1.2.0",
+    "jest-environment-jsdom": "^29.7.0",
     "next": "15.3.1",
     "pgn-parser": "^2.2.1",
     "react": "^19.0.0",

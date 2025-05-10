@@ -2,16 +2,20 @@
 import { ChessEngine } from './ChessEngine';
 import { VariationLine, PgnMove } from '@/types/pgnTypes';
 import { DrillStateManager } from './DrillStateManager';
+import { ChessPieceColor } from '@/enums/ChessPieceColor';
+import { Chess } from 'chess.js';
+import { ChessSquare } from '@/enums/ChessSquare';
+import { PromotionPiece } from '@/enums/ChessPiece';
 
 export class DrillSession {
   private chessEngine: ChessEngine;
   private variation: VariationLine;
-  private userColor: 'w' | 'b';
-  public stateManager: DrillStateManager; // Exposed for test
+  private userColor: ChessPieceColor;
+  public stateManager: DrillStateManager;
 
   constructor(
     variation: VariationLine,
-    userColor: 'w' | 'b',
+    userColor: ChessPieceColor,
     initialFen?: string,
   ) {
     this.chessEngine = new ChessEngine();
@@ -20,7 +24,7 @@ export class DrillSession {
     this.stateManager = new DrillStateManager(variation.moves);
 
     if (initialFen) {
-      this.chessEngine.load(initialFen);
+      this.chessEngine.game.load(initialFen);
     } else {
       this.chessEngine.reset(); // Start from the standard initial position if no FEN is provided
     }
@@ -37,7 +41,7 @@ export class DrillSession {
       return false; // Drill is complete
     }
     const engineTurn = this.chessEngine.game.turn();
-    return engineTurn === this.userColor;
+    return engineTurn === this.userColor.toString();
   }
 
   public getExpectedMove(): PgnMove | null {
@@ -48,9 +52,9 @@ export class DrillSession {
   }
 
   public handleUserMove(moveInput: {
-    from: string;
-    to: string;
-    promotion?: string;
+    from: ChessSquare;
+    to: ChessSquare;
+    promotion: PromotionPiece;
   }): {
     success: boolean;
     isCorrectMove: boolean;
@@ -81,9 +85,14 @@ export class DrillSession {
 
     // TODO: More robust SAN comparison or from/to comparison
     const isCorrect =
-      (expectedMove.from === moveInput.from &&
+      (typeof expectedMove.from === 'string' &&
+        typeof moveInput.from === 'string' &&
+        expectedMove.from === moveInput.from &&
+        typeof expectedMove.to === 'string' &&
+        typeof moveInput.to === 'string' &&
         expectedMove.to === moveInput.to) ||
-      expectedMove.move === this.chessEngine.moveToSan?.(moveInput); // Requires moveToSan method
+      (typeof expectedMove.move === 'string' &&
+        expectedMove.move === this._moveToSan({ from: moveInput.from.toString(), to: moveInput.to.toString(), promotion: moveInput.promotion })); // Use DrillSession's own SAN conversion
 
     if (!isCorrect) {
       return {
@@ -94,7 +103,11 @@ export class DrillSession {
       };
     }
 
-    const moveResult = this.chessEngine.makeMove(moveInput);
+    const moveResult = this.chessEngine.makeMove({
+      from: moveInput.from.toString(),
+      to: moveInput.to.toString(),
+      promotion: moveInput.promotion?.toString(),
+    });
     if (!moveResult) {
       // This implies an illegal move despite our check, or an engine issue.
       // This could happen if the `isCorrect` check above is not perfectly aligned with engine's legality.
@@ -179,7 +192,7 @@ export class DrillSession {
     return this.variation;
   }
 
-  public getUserColor(): 'w' | 'b' {
+  public getUserColor(): ChessPieceColor {
     return this.userColor;
   }
 

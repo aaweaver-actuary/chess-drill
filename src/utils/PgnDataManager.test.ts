@@ -8,7 +8,7 @@ import {
   VariationLine,
   MoveForVariationKey,
 } from '@/types/pgnTypes';
-import { describe, test, expect, jest, beforeEach } from '@jest/globals';
+import { describe, test, expect, jest, beforeEach, it } from '@jest/globals';
 
 // Mock VariationParser
 jest.mock('./VariationParser');
@@ -400,8 +400,6 @@ describe('PgnDataManager', () => {
     });
   });
 });
-
-import PgnDataManager from './PgnDataManager';
 
 describe('PgnDataManager', () => {
   it('should load and store a PGN string', () => {

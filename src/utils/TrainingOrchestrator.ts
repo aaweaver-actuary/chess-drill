@@ -1,23 +1,25 @@
-import { PgnDataManager } from './PgnDataManager'; // Added import
-import { ChessEngine } from './ChessEngine';
-import { StatsStore } from './StatsStore';
-import { DrillSession } from './DrillSession'; // Added import
+import { PgnDataManager } from '@/utils/PgnDataManager';
+import { ChessEngine } from '@/utils/ChessEngine';
+import { StatsStore } from '@/utils/StatsStore';
+import { ChessPieceColor } from '@/enums/ChessPieceColor';
+import { DrillSession } from '@/utils/DrillSession';
 import {
   ParsedPgn,
   PgnMove,
   VariationLine,
   MoveForVariationKey,
-} from '@/types/pgnTypes'; // Consolidated imports
+} from '@/types/pgnTypes';
 
 export class TrainingOrchestrator {
-  private pgnDataManager: PgnDataManager; // Added
+  private pgnDataManager: PgnDataManager;
   private _engine: ChessEngine | null = null; // Retained for now, though DrillSession has its own
   private statsStore: StatsStore;
-  private _drillSession: DrillSession | null = null; // Added property
+  private _drillSession: DrillSession | null = null;
+  private _currentVariation: VariationLine | null = null;
 
   constructor() {
-    this.pgnDataManager = new PgnDataManager(); // Initialize PgnDataManager
-    this._engine = new ChessEngine(); // Retained for now
+    this.pgnDataManager = new PgnDataManager();
+    this._engine = new ChessEngine();
     this.statsStore = new StatsStore();
   }
 
@@ -55,14 +57,16 @@ export class TrainingOrchestrator {
   public getCurrentVariationKey(): string {
     const currentVariation = this._drillSession?.getVariation();
     if (!currentVariation) return '';
-    return this.pgnDataManager.generateVariationKey(currentVariation.moves);
+    // Map moves to { move: string } for compatibility with MoveForVariationKey
+    return this.pgnDataManager.generateVariationKey(
+      currentVariation.moves.map((m) => ({ move: String(m.move) }))
+    );
   }
 
   /**
    * Determines if the user plays White or Black based on the first move of the variation.
    * For MVP: if move starts with '...', user is Black; otherwise, user is White.
-   */
-  public determineUserColor(variation: VariationLine): 'w' | 'b' | undefined {
+  public determineUserColor(variation: VariationLine): ChessPieceColor | undefined {
     if (!variation.moves || variation.moves.length === 0) return undefined;
     const firstMove = variation.moves[0];
 
@@ -76,10 +80,15 @@ export class TrainingOrchestrator {
       return 'b';
     }
     // Fallback for simple PGNs or parsers not providing turn
-    if (typeof firstMove.move === 'string' && firstMove.move.includes('...')) {
+    if (
+      typeof firstMove.move === 'string' &&
+      (firstMove.move as string).includes &&
+      (firstMove.move as string).includes('...')
+    ) {
       return 'b'; // User plays Black
     }
     return 'w'; // User plays White
+  }
   }
 
   /**
@@ -104,8 +113,7 @@ export class TrainingOrchestrator {
   public flattenVariations(pgnData: ParsedPgn | null): VariationLine[] {
     return this.pgnDataManager.flattenVariations(pgnData); // Delegated
   }
-
-  public startTrainingSession(userPlaysAs?: 'w' | 'b'): void {
+  public startTrainingSession(userPlaysAs?: ChessPieceColor): void {
     if (!this.pgnDataManager.hasPgnLoaded()) {
       throw new Error('PGN not loaded. Cannot start training session.');
     }
@@ -153,13 +161,17 @@ export class TrainingOrchestrator {
     //   this._drillSession.playOpponentMoveIfApplicable(); // A hypothetical method
     // }
   }
+  determineUserColor(selectedVariation: VariationLine): ChessPieceColor | undefined {
+    throw new Error('Method not implemented.');
+  }
 
   public getCurrentFen(): string | undefined {
     return this._drillSession?.getCurrentFen();
   }
 
   public getExpectedMoveForCurrentUser(): PgnMove | undefined {
-    return this._drillSession?.getExpectedMove();
+    const move = this._drillSession?.getExpectedMove();
+    return move === null ? undefined : move;
   }
 
   public isUserTurn(): boolean {
@@ -208,7 +220,7 @@ export class TrainingOrchestrator {
       isVariationComplete: result.isComplete,
       nextFen: result.newFen,
       opponentMove: result.opponentMove,
-      expectedMoveSan: expectedMoveBeforeUserAction?.move, // Return the SAN of the move that was expected
+      expectedMoveSan: expectedMoveBeforeUserAction?.move ? String(expectedMoveBeforeUserAction.move) : undefined, // Return the SAN of the move that was expected
     };
   }
 

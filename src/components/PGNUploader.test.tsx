@@ -1,7 +1,8 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import PGNUploader from '@/components/PGNUploader';
+import { describe, expect, it, jest } from '@jest/globals';
 import '@testing-library/jest-dom';
-import PGNUploader from './PGNUploader';
 
 describe('PGNUploader', () => {
   it('renders an input type="file" with accept=".pgn"', () => {

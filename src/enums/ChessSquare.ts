@@ -1,7 +1,10 @@
 /**
- * ChessSquare enum represents the squares on a chessboard.
- * Each square is represented by a unique number from 0 to 63.
- * The squares are arranged in a standard chessboard layout, starting from A1 to H8.
+ * Represents the 64 squares on a standard chessboard.
+ * 
+ * Each square is identified by its algebraic notation (e.g., A1, E4, H8) and mapped to a unique numeric value from 0 to 63.
+ * The numbering starts from A1 (0) at the bottom-left and increases left-to-right, bottom-to-top (A1, A2, ..., H8).
+ * 
+ * This enum can be used for indexing, board representation, and move calculations in chess-related applications.
  */
 export enum ChessSquare {
   A1 = 0,
@@ -69,4 +72,81 @@ export enum ChessSquare {
   H7 = 62,
   H8 = 63
 }
+
+/**
+ * Maps string representations of chessboard squares (e.g., "a1", "e4") to their corresponding `ChessSquare` enum values.
+ *
+ * This mapping allows for easy conversion from algebraic notation strings to the strongly-typed `ChessSquare` enum.
+ *
+ * @example
+ * ```typescript
+ * const square = ChessSquareFromString["e4"]; // ChessSquare.E4
+ * ```
+ */
+export const ChessSquareFromString: Record<string, ChessSquare> = {
+  a1: ChessSquare.A1,
+  a2: ChessSquare.A2,
+  a3: ChessSquare.A3,
+  a4: ChessSquare.A4,
+  a5: ChessSquare.A5,
+  a6: ChessSquare.A6,
+  a7: ChessSquare.A7,
+  a8: ChessSquare.A8,
+  b1: ChessSquare.B1,
+  b2: ChessSquare.B2,
+  b3: ChessSquare.B3,
+  b4: ChessSquare.B4,
+  b5: ChessSquare.B5,
+  b6: ChessSquare.B6,
+  b7: ChessSquare.B7,
+  b8: ChessSquare.B8,
+  c1: ChessSquare.C1,
+  c2: ChessSquare.C2,
+  c3: ChessSquare.C3,
+  c4: ChessSquare.C4,
+  c5: ChessSquare.C5,
+  c6: ChessSquare.C6,
+  c7: ChessSquare.C7,
+  c8: ChessSquare.C8,
+  d1: ChessSquare.D1,
+  d2: ChessSquare.D2,
+  d3: ChessSquare.D3,
+  d4: ChessSquare.D4,
+  d5: ChessSquare.D5,
+  d6: ChessSquare.D6,
+  d7: ChessSquare.D7,
+  d8: ChessSquare.D8,
+  e1: ChessSquare.E1,
+  e2: ChessSquare.E2,
+  e3: ChessSquare.E3,
+  e4: ChessSquare.E4,
+  e5: ChessSquare.E5,
+  e6: ChessSquare.E6,
+  e7: ChessSquare.E7,
+  e8: ChessSquare.E8,
+  f1: ChessSquare.F1,
+  f2: ChessSquare.F2,
+  f3: ChessSquare.F3,
+  f4: ChessSquare.F4,
+  f5: ChessSquare.F5,
+  f6: ChessSquare.F6,
+  f7: ChessSquare.F7,
+  f8: ChessSquare.F8,
+  g1: ChessSquare.G1,
+  g2: ChessSquare.G2,
+  g3: ChessSquare.G3,
+  g4: ChessSquare.G4,
+  g5: ChessSquare.G5,
+  g6: ChessSquare.G6,
+  g7: ChessSquare.G7,
+  g8: ChessSquare.G8,
+  h1: ChessSquare.H1,
+  h2: ChessSquare.H2,
+  h3: ChessSquare.H3,
+  h4: ChessSquare.H4,
+  h5: ChessSquare.H5,
+  h6: ChessSquare.H6,
+  h7: ChessSquare.H7,
+  h8: ChessSquare.H8
+};
 

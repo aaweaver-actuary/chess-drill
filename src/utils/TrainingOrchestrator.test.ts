@@ -1,20 +1,26 @@
-import {
-  TrainingOrchestrator,
-  // ParsedPgn, PgnMove, PgnRav, VariationLine, // These types are now imported from @/types/pgnTypes
-} from '@/utils/TrainingOrchestrator';
+import { TrainingOrchestrator } from '@/utils/TrainingOrchestrator';
 import {
   ParsedPgn,
   PgnMove,
   PgnRav,
   VariationLine,
   MoveForVariationKey,
-} from '@/types/pgnTypes'; // Added import
-import { describe, test, expect, jest, beforeEach } from '@jest/globals';
-// import { VariationParser } from '@/utils/VariationParser'; // No longer directly used by TrainingOrchestrator
-import { PgnDataManager } from '@/utils/PgnDataManager'; // Import PgnDataManager
+} from '@/types/pgnTypes';
+import {
+  describe,
+  test,
+  expect,
+  jest,
+  beforeEach,
+  afterEach,
+} from '@jest/globals';
+import { PgnDataManager } from '@/utils/PgnDataManager';
 import { ChessEngine } from '@/utils/ChessEngine';
 import { StatsStore } from '@/utils/StatsStore';
-import { DrillSession } from '@/utils/DrillSession'; // Import DrillSession
+import { DrillSession } from '@/utils/DrillSession';
+import { Chess } from 'chess.js';
+import { ChessboardDnDProvider } from 'react-chessboard';
+import { ChessPieceColor } from '@/enums/ChessPieceColor';
 
 // Mock PgnDataManager
 jest.mock('@/utils/PgnDataManager');
@@ -35,8 +41,8 @@ const createMockPgnDataManager = () => ({
   hasPgnLoaded: jest.fn().mockReturnValue(false),
   generateVariationKey: jest
     .fn()
-    .mockImplementation((moves: MoveForVariationKey[]) =>
-      moves.map((m) => m.move).join('_'),
+    .mockImplementation((moves: unknown) =>
+      (moves as MoveForVariationKey[]).map((m) => m.move).join('_'),
     ),
   flattenVariations: jest.fn().mockReturnValue([]),
 });
@@ -84,7 +90,7 @@ describe('TrainingOrchestrator', () => {
       typeof PgnDataManager
     >;
     mockPgnDataManagerInstance =
-      createMockPgnDataManager() as jest.Mocked<PgnDataManager>; // Use helper
+      createMockPgnDataManager() as unknown as jest.Mocked<PgnDataManager>; // Use helper
     MockPgnDataManager.mockImplementation(() => mockPgnDataManagerInstance);
 
     // Create new mock instances for each test
@@ -119,22 +125,38 @@ describe('TrainingOrchestrator', () => {
     MockStatsStore.mockImplementation(() => mockStatsStoreInstance);
 
     // Clear ChessEngine mocks
-    ChessEngine.mockClear();
+    if (typeof (ChessEngine as any).mockClear === 'function') {
+      (ChessEngine as any).mockClear();
+    }
     if (
-      ChessEngine.mock.instances[0] &&
-      ChessEngine.mock.instances[0].makeMove
+      jest.isMockFunction(ChessEngine) &&
+      (ChessEngine as any).mock &&
+      (ChessEngine as any).mock.instances[0] &&
+      (ChessEngine as any).mock.instances[0].makeMove
     ) {
-      ChessEngine.mock.instances[0].makeMove.mockClear();
+      (ChessEngine as any).mock.instances[0].makeMove.mockClear();
     }
     // Setup a default mock implementation for ChessEngine for tests that need it
-    const mockMakeMove = jest.fn();
+    const mockMakeMove = jest.fn(
+      (move: string | { from: string; to: string; promotion?: string }) => {
+        // Return a dummy Move object as expected by ChessEngine.makeMove
+        return {
+          from: typeof move === 'string' ? move.slice(0, 2) : move.from,
+          to: typeof move === 'string' ? move.slice(2, 4) : move.to,
+          san: ChessPiece.
+          flags: '',
+          piece: 'p',
+          color: 'w',
+        } as any; // Use 'as any' to satisfy the Move type for testing
+      },
+    );
     const mockGetFen = jest
       .fn()
       .mockReturnValue(
         'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
       ); // Default FEN
     const mockTurn = jest.fn().mockReturnValue('w'); // Default turn
-    ChessEngine.mockImplementation(() => ({
+    (ChessEngine as jest.MockedClass<typeof ChessEngine>).mockImplementation(() => ({
       makeMove: mockMakeMove,
       game: {
         fen: mockGetFen,
@@ -815,7 +837,6 @@ describe('TrainingOrchestrator', () => {
 
       orchestrator.startTrainingSession();
 
-      // @ts-ignore
       expect(orchestrator._currentVariation).toBe(variations[1]);
       // @ts-ignore
       expect(orchestrator._userColor).toBe('w');
@@ -856,24 +877,32 @@ describe('TrainingOrchestrator', () => {
       // @ts-ignore
       mockPgnDataManagerInstance.getParsedPgn.mockReturnValue(mockParsedPgn);
       const variation = {
-        moves: [{ move: 'e4' }, { move: 'e5' }, { move: 'Nf3' }],
+        moves: [
+          { move: 'e4' as any }, 
+          { move: 'e5' as any }, 
+          { move: 'Nf3' as any }
+        ],
       };
       jest
         .spyOn(orchestrator, 'flattenVariations')
-        .mockReturnValue([variation]);
+        .mockReturnValue([variation as any]);
       jest
         .spyOn(orchestrator, 'selectRandomVariation')
-        .mockReturnValue(variation);
-      jest.spyOn(orchestrator, 'determineUserColor').mockReturnValue('b');
+        .mockReturnValue(variation as any);
+      jest.spyOn(orchestrator, 'determineUserColor').mockReturnValue(ChessPieceColor.Black);
 
       orchestrator.startTrainingSession();
 
       // @ts-ignore
       const engine = orchestrator._engine;
       // Should have called makeMove for e4 (White's move), then stopped for Black's turn
-      expect(engine.makeMove).toHaveBeenCalledWith('e4');
-      // Should not have called makeMove for e5 (Black's move)
-      expect(engine.makeMove).not.toHaveBeenCalledWith('e5');
+      if (engine) {
+        expect(engine.makeMove).toHaveBeenCalledWith('e4');
+        // Should not have called makeMove for e5 (Black's move)
+        expect(engine.makeMove).not.toHaveBeenCalledWith('e5');
+      } else {
+        throw new Error('Engine is null');
+      }
     });
   });
 

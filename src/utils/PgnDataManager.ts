@@ -115,10 +115,14 @@ export class PgnDataManager {
     if (!this.pgnString) {
       return [];
     }
-    // This is where actual PGN parsing logic would go.
-    // For now, let's assume a very simple structure or return a mock.
-    console.log('Parsing PGN (placeholder):', this.pgnString);
-    // Mock variation data
+    const mockedPgnParser = new VariationParser();
+    const parsedVariations = mockedPgnParser.parse(this.pgnString);
+    if (!parsedVariations) {
+      return [];
+    }
+
+    // Mocked data for demonstration purposes
+    // In a real scenario, this would be replaced with actual parsing logic
     return [
       {
         id: 'var1',

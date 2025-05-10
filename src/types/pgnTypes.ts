@@ -1,11 +1,15 @@
 // src/types/pgnTypes.ts
 
+import { PromotionPiece } from "@/enums/ChessPiece";
+import { ChessSquare } from "@/enums/ChessSquare";
+import { Chess } from "chess.js";
+
 // Define a type for parsed PGN moves, including recursive RAVs
 export interface PgnMove {
-  move: string; // SAN string for the move
-  from?: string; // Starting square, e.g., 'e2'
-  to?: string; // Ending square, e.g., 'e4'
-  promotion?: 'q' | 'r' | 'b' | 'n'; // Promotion piece
+  move: ChessSquare;
+  from?: ChessSquare; // Starting square, e.g., 'e2'
+  to?: ChessSquare; // Ending square, e.g., 'e4'
+  promotion?: PromotionPiece;
   comment?: string;
   nag?: string[];
   rav?: PgnRav[];
