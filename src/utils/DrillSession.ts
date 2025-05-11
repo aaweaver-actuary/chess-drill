@@ -1,32 +1,29 @@
-// src/utils/DrillSession.ts
-import { ChessEngine } from './ChessEngine';
-import { VariationLine, PgnMove } from '@/types/pgnTypes';
-import { DrillStateManager } from './DrillStateManager';
-import { ChessPieceColor } from '@/_enums/ChessPieceColor';
-import { Chess } from 'chess.js';
-import { ChessSquare } from '@/_enums/ChessSquare';
-import { PromotionPiece } from '@/_enums/ChessPiece';
+import { PgnMove } from '@/types/pgnTypes';
+import { Variation } from '@/types/variation';
+import { ChessEngine } from '@/utils/ChessEngine';
+import { DrillStateManager } from '@/utils/DrillStateManager';
+import { ChessPieceColor, ChessSquare, PromotionPiece } from '@/enums';
 
 export class DrillSession {
   private chessEngine: ChessEngine;
-  private variation: VariationLine;
+  private variation: Variation;
   private userColor: ChessPieceColor;
   public stateManager: DrillStateManager;
 
   constructor(
-    variation: VariationLine,
+    variation: Variation,
     userColor: ChessPieceColor,
     initialFen?: string,
   ) {
     this.chessEngine = new ChessEngine();
     this.variation = variation;
     this.userColor = userColor;
-    this.stateManager = new DrillStateManager(variation.moves);
+    this.stateManager = new DrillStateManager(variation.getMoves());
 
     if (initialFen) {
       this.chessEngine.game.load(initialFen);
     } else {
-      this.chessEngine.reset(); // Start from the standard initial position if no FEN is provided
+      this.chessEngine.reset();
     }
     // TODO: Advance to the actual starting position of the drill if the variation doesn't start from move 1
     // TODO: Auto-play opponent moves if it's not the user's turn initially
@@ -193,7 +190,7 @@ export class DrillSession {
   }
 
   // New getter methods
-  public getVariation(): VariationLine {
+  public getVariation(): Variation {
     return this.variation;
   }
 

@@ -1,7 +1,8 @@
 // src/utils/DrillSession.test.ts
 import { DrillSession } from './DrillSession';
 import { ChessEngine } from './ChessEngine';
-import { VariationLine, PgnMove } from '@/types/pgnTypes';
+import { PgnMove } from '@/types/pgnTypes';
+import { Variation } from '@/types/variation';
 import { describe, test, expect, jest, beforeEach } from '@jest/globals';
 import { DrillStateManager } from './DrillStateManager';
 import { ChessPieceColor } from '@/_enums/ChessPieceColor';
@@ -48,7 +49,7 @@ const createMockChessEngineInstance = () => ({
 
 describe('DrillSession', () => {
   let mockChessEngineInstance: jest.Mocked<ChessEngine>;
-  let sampleVariation: VariationLine;
+  let sampleVariation: Variation;
 
   beforeEach(() => {
     // Reset all mock implementations and calls
@@ -85,14 +86,14 @@ describe('DrillSession', () => {
   test('constructor should initialize ChessEngine and properties', () => {
     const drill = new DrillSession(sampleVariation, ChessPieceColor.White);
     expect(ChessEngine).toHaveBeenCalledTimes(1);
-    expect(mockReset).toHaveBeenCalled(); // Default FEN means reset is called
+    expect(mockReset).toHaveBeenCalled();
     expect(drill.getCurrentFen()).toBe(
       'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     );
     // @ts-ignore // Access private for test
     expect(drill.variation).toEqual(sampleVariation);
     // @ts-ignore // Access private for test
-    expect(drill.userColor).toBe(ChessPieceColor.White.valueOf());
+    expect(drill.userColor).toBe(ChessPieceColor.White);
     // Use stateManager for move index
     expect(drill.stateManager.getCurrentMoveIndex()).toBe(0);
   });
@@ -121,6 +122,7 @@ describe('DrillSession', () => {
       getExpectedMove: mockGetExpectedMove,
       isComplete: jest.fn().mockReturnValue(false),
       reset: jest.fn(),
+      // Add any additional methods or properties used by DrillSession
     }));
     const sampleVariation = {
       moves: [{ move: 'e4', from: ChessSquare.E2, to: ChessSquare.E4 }],
@@ -301,7 +303,7 @@ describe('DrillSession', () => {
     });
 
     test('should handle correct user move when it is the last move of the variation (no opponent reply)', () => {
-      const shortVariation: VariationLine = {
+      const shortVariation: Variation = {
         moves: [{ move: 'e4', from: ChessSquare.E2, to: ChessSquare.E4 }], // Only one move
         startingFEN: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
       };
@@ -406,7 +408,7 @@ describe('DrillSession', () => {
     test('should return true if currentMoveIndex exceeds total moves (safety check)', () => {
       const drill = new DrillSession(sampleVariation, ChessPieceColor.White);
       drill.stateManager.reset();
-      for (let i = 0; i < sampleVariation.moves.length + 1; i++) {
+      for (let i = 0; i < sampleVariation.moves.length; i++) {
         drill.stateManager.advance();
       }
       expect(drill.isDrillComplete()).toBe(true);

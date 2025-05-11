@@ -3,22 +3,18 @@ import { PgnDataManager } from './PgnDataManager';
 import { VariationParser } from './VariationParser';
 import {
   ParsedPgn,
-  VariationLine,
   MoveForVariationKey,
 } from '@/types/pgnTypes';
+import { Variation } from '@/types/variation';
 
-// Mock VariationParser
 jest.mock('./VariationParser');
 
-
-const mockParse = jest.fn() as jest.Mock<(pgnString: string) => ParsedPgn>;
+const mockParse = jest.fn() as jest.Mock<(pgnString: string) => any>;
 
 describe('PgnDataManager', () => {
-  let pgnDataManager: PgnDataManager;
     VariationParser.prototype.parse = mockParse as unknown as (
       pgn: string,
-    ) => ParsedPgn;
-    pgnDataManager = new PgnDataManager();
+    ) => any;
   });
 
   test('constructor(): should be able to instantiate', () => {
@@ -58,10 +54,14 @@ describe('PgnDataManager', () => {
       pgnDataManager.loadPgn(pgn);
       expect(pgnDataManager.getParsedPgn()).toEqual(parsedWithRav);
     });
-  });
+    
   test('should return true if PGN is loaded (duplicate test, merged)', () => {
-    const parsed: ParsedPgn = { moves: [{ move: 'e4' }] };
-    mockParse.mockReturnValue(parsed);
+    const parsed: ParsedPgn = {
+      moves: [{ move: 'e4' }],
+      tags: {},
+    };
+    const pgnDataManager = new PgnDataManager();
+    mockParse.mockReturnValue(parsed
     pgnDataManager.loadPgn('1. e4');
     expect(pgnDataManager.hasPgnLoaded()).toBe(true);
   });
@@ -115,7 +115,7 @@ describe('flattenVariations', () => {
       moves: [{ move: 'e4' }, { move: 'e5' }, { move: 'Nf3' }],
       tags: { White: 'Player1', Black: 'Player2' },
     };
-    const expected: VariationLine[] = [
+    const expected = [
       {
         moves: [{ move: 'e4' }, { move: 'e5' }, { move: 'Nf3' }],
         tags: { White: 'Player1', Black: 'Player2' },
@@ -132,7 +132,7 @@ describe('flattenVariations', () => {
       moves: [{ move: 'e5' }],
       tags: { FEN: fen, White: 'Player1' },
     };
-    const expected: VariationLine[] = [
+    const expected = [
       {
         moves: [{ move: 'e5' }],
         tags: { FEN: fen, White: 'Player1' },
@@ -150,15 +150,13 @@ describe('flattenVariations', () => {
       startingFEN: fen,
       tags: { White: 'Player1' },
     };
-    const expected: VariationLine[] = [
-      {
-        moves: [{ move: 'e5' }],
-        tags: { White: 'Player1' },
-        startingFEN: fen,
-      },
-    ];
     const pgnDataManager = new PgnDataManager();
-    expect(pgnDataManager.flattenVariations(pgnData)).toEqual(expected);
+    const result = pgnDataManager.flattenVariations(pgnData);
+    expect(result).toHaveLength(1);
+    expect(result[0].getMoves()).toEqual([{ move: 'e5' }]);
+    expect(result[0].getTags()).toEqual({ White: 'Player1' });
+    expect(result[0].getStartingFEN()).toEqual(fen);
+    expect(result[0].getVariationKey()).toEqual('e5');
   });
 
   test('should correctly flatten a PGN with one simple variation (RAV)', () => {
@@ -316,7 +314,7 @@ describe('flattenVariations', () => {
     });
     // Check that RAVs are indeed undefined in the output moves
     result.forEach((line) => {
-      line.moves.forEach((move) => {
+      line.moves.forEach((move: any) => {
         expect(move.rav).toBeUndefined();
       });
     });

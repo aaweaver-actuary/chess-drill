@@ -1,14 +1,14 @@
 export class DrillStateManager {
-  private moves: any[];
+  private moves: string[];
   private currentMoveIndex: number;
 
-  constructor(moves: any[]) {
+  constructor(moves: string[]) {
     this.moves = moves;
     this.currentMoveIndex = 0;
   }
 
   getCurrentMoveIndex(): number {
-    return this.currentMoveIndex;
+    return this.currentMoveIndex || 0;
   }
 
   getExpectedMove(): any {
